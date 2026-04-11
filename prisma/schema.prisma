@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -15,17 +16,105 @@ enum UserRole {
   ADMIN
 }
 
+enum PlatformRole {
+  USER
+  STUDENT
+  STAFF
+  LEADER
+  ADMIN
+}
+
+enum PermissionKey {
+  ADMIN_ACCESS
+  DASHBOARD_VIEW
+  SCHOOLS_MANAGE
+  MINISTRIES_MANAGE
+  OPPORTUNITIES_MANAGE
+  PUBLIC_CONTENT_MANAGE
+  STAFF_READ
+  STAFF_MANAGE
+  STAFF_APPLICATIONS_READ
+  STAFF_APPLICATIONS_REVIEW
+  STAFF_ONBOARDING_MANAGE
+}
+
+enum AccessScopeType {
+  GLOBAL
+  BASE
+  MINISTRY
+  SCHOOL
+  TEAM
+}
+
+enum StaffStatus {
+  ACTIVE
+  OUTREACH
+  TRAINING
+  TRAVELLING
+  VACATION
+  INACTIVE
+}
+
 model UserProfile {
-  id       String   @id
-  email    String   @unique
-  fullName String?
-  role     UserRole @default(STAFF)
+  id           String        @id
+  email        String        @unique
+  fullName     String?
+  role         UserRole      @default(STAFF)
+  platformRole PlatformRole?
+
+  roleAssignments  UserRoleAssignment[]
+  permissionGrants UserPermissionGrant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model STAFF {
+model UserRoleAssignment {
+  id String @id @default(cuid())
+
+  userId String
+  role   PlatformRole
+
+  scopeType  AccessScopeType @default(GLOBAL)
+  scopeKey   String          @default("global")
+  scopeLabel String?
+
+  isPrimary Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, role, scopeType, scopeKey])
+  @@index([userId, isActive])
+  @@index([scopeType, scopeKey])
+}
+
+model UserPermissionGrant {
+  id String @id @default(cuid())
+
+  userId     String
+  permission PermissionKey
+
+  scopeType  AccessScopeType @default(GLOBAL)
+  scopeKey   String          @default("global")
+  scopeLabel String?
+
+  isActive Boolean @default(true)
+
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, permission, scopeType, scopeKey])
+  @@index([userId, isActive])
+  @@index([scopeType, scopeKey])
+}
+
+model Staff {
   id       String  @id @default(uuid())
   fullName String
   email    String?
@@ -34,6 +123,608 @@ model STAFF {
   status   String?
   notes    String?
 
+  birthDate              DateTime?
+  cpf                    String?
+  rg                     String?
+  maritalStatus          String?
+  city                   String?
+  churchName             String?
+  pastorLeaderName       String?
+  pastorLeaderPhone      String?
+  pastorLeaderEmail      String?
+  churchAwareAndAgrees   Boolean?
+  recentPhotoUrl         String?
+  dataUseConsentAccepted Boolean?
+
+  professionalExperience     String?
+  ywamTraining               String?
+  baseProjects               String?
+  mainSkills                 String?
+  missionWorkExperience      String?
+  educationLevel             String?
+  languages                  String?
+  professionalSpecialization String?
+
+  housingPreference    String?
+  outsideBaseAddress   String?
+  baseStayFormat       String?
+  intendedStayDuration String?
+
+  emergencyContactName     String?
+  emergencyContactRelation String?
+  emergencyContactPhone    String?
+  emergencyContactEmail    String?
+
+  spouseName           String?
+  childrenSummary      String?
+  physicalLimitation   String?
+  controlledMedication String?
+
+  financialSupportType    String?
+  churchFinancialSupport  Boolean?
+  hasFinancialMaintainers Boolean?
+  canPayBaseMonthly       Boolean?
+
+  finalNotes String?
+
+  volunteerTermAccepted         Boolean?
+  childProtectionPolicyAccepted Boolean?
+
+  onboarding StaffOnboarding?
+
+  sourceApplication StaffApplication? @relation("ApplicationToStaff")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model StaffOnboarding {
+  id      String @id @default(uuid())
+  staffId String @unique
+
+  stage  String @default("IDENTIFICATION")
+  status String @default("DRAFT")
+
+  step1Completed Boolean @default(false)
+  step2Completed Boolean @default(false)
+  step3Completed Boolean @default(false)
+  step4Completed Boolean @default(false)
+  step5Completed Boolean @default(false)
+
+  completionPercent Int @default(0)
+
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  deadlineAt  DateTime?
+
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+}
+
+model StaffApplication {
+  id String @id @default(uuid())
+
+  fullName  String
+  birthDate DateTime?
+  cpf       String?
+  passport  String?
+  rg        String?
+
+  maritalStatus String?
+
+  email    String
+  phone    String?
+  whatsapp String?
+
+  city  String?
+  state String?
+
+  churchName        String?
+  pastorLeaderName  String?
+  pastorLeaderPhone String?
+  pastorLeaderEmail String?
+
+  churchAwareAndAgrees Boolean?
+
+  hasCompletedDts     Boolean?
+  ywamTrainingSummary String?
+
+  desiredMinistry      String?
+  desiredRole          String?
+  intendedStayDuration String?
+
+  financialSupportType String?
+
+  mainSkillsSummary             String?
+  missionExperienceSummary      String?
+  professionalExperienceSummary String?
+
+  recentPhotoUrl String?
+
+  dataUseConsentAccepted Boolean @default(false)
+
+  applicationStatus String   @default("SUBMITTED")
+  submittedAt       DateTime @default(now())
+
+  internalNotes String?
+
+  approvedForOnboarding Boolean   @default(false)
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+
+  createdStaffId String? @unique
+  createdStaff   Staff?  @relation("ApplicationToStaff", fields: [createdStaffId], references: [id])
+
+  review                    StaffApplicationReview?
+  pastoralReferenceRequests PastoralReferenceRequest[]
+  pastoralReferences        PastoralReference[]
+  backgroundChecks          BackgroundCheck[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StaffApplicationReview {
+  id            String @id @default(uuid())
+  applicationId String @unique
+
+  reviewStatus        String  @default("PENDING")
+  recommendedMinistry String?
+  recommendedRole     String?
+
+  decision    String? // APPROVED, REJECTED, MORE_INFO_REQUIRED
+  reviewNotes String?
+
+  reviewedBy String?
+  reviewedAt DateTime?
+
+  application StaffApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PastoralEmailSendStatus {
+  PENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  FAILED
+}
+
+model PastoralReference {
+  id            String  @id @default(uuid())
+  applicationId String
+  requestId     String? @unique
+
+  contactName  String?
+  contactRole  String?
+  contactPhone String?
+  contactEmail String?
+
+  contactStatus String @default("PENDING")
+  // PENDING, CONTACTED, RESPONDED, NO_RESPONSE
+
+  recommendationStatus String?
+  // POSITIVE, CAUTION, NEGATIVE
+
+  responseSummary String?
+  contactedAt     DateTime?
+  respondedAt     DateTime?
+
+  respondedByName  String?
+  respondedByEmail String?
+
+  recordedManually Boolean @default(false)
+  recordedBy       String?
+
+  application StaffApplication          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  request     PastoralReferenceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PastoralReferenceRequest {
+  id            String @id @default(uuid())
+  applicationId String
+
+  contactName  String?
+  contactRole  String?
+  contactPhone String?
+  contactEmail String?
+
+  token         String @unique
+  requestStatus String @default("PENDING")
+  // PENDING, SENT, OPENED, RESPONDED, EXPIRED, MANUAL_RESPONSE_REGISTERED
+
+  sentAt      DateTime?
+  openedAt    DateTime?
+  respondedAt DateTime?
+  expiresAt   DateTime?
+
+  recordedBy String?
+
+  application StaffApplication   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  response    PastoralReference?
+
+  emailDelivery PastoralEmailDelivery?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PastoralEmailDelivery {
+  id String @id @default(cuid())
+
+  pastoralReferenceRequestId String?                   @unique
+  pastoralReferenceRequest   PastoralReferenceRequest? @relation(fields: [pastoralReferenceRequestId], references: [id], onDelete: SetNull)
+
+  toEmail String
+  subject String?
+
+  provider          String  @default("resend")
+  providerMessageId String? @unique
+
+  sendStatus String @default("PENDING")
+  // PENDING, SENT, DELIVERED, OPENED, CLICKED, FAILED
+
+  lastEvent String?
+
+  deliveredAt DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  failedAt    DateTime?
+
+  events PastoralEmailEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PastoralEmailEvent {
+  id String @id @default(cuid())
+
+  pastoralEmailDeliveryId String
+  pastoralEmailDelivery   PastoralEmailDelivery @relation(fields: [pastoralEmailDeliveryId], references: [id], onDelete: Cascade)
+
+  providerEventId String @unique
+  eventType       String
+
+  recipient String?
+  url       String?
+
+  occurredAt DateTime
+
+  payloadJson Json
+
+  createdAt DateTime @default(now())
+}
+
+model BackgroundCheck {
+  id            String @id @default(uuid())
+  applicationId String
+
+  checkType   String? // cpf_check, document_check, other
+  checkStatus String  @default("PENDING")
+  // PENDING, CLEAR, FLAGGED, REQUIRES_REVIEW
+
+  checkedBy String?
+  checkedAt DateTime?
+
+  notes String?
+
+  application StaffApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model School {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Ministry {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Opportunity {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  requirements String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// Legacy tables above are intentionally preserved because this repository still
+/// shares the same database with another system. The coffee shop models below use
+/// dedicated `coffee_shop_*` tables so we can evolve this project without risking
+/// data loss or table collisions.
+
+enum CoffeeTeamRole {
+  ADMIN
+  SELLER
+  FINANCE
+}
+
+enum CoffeeMenuArea {
+  FOODS
+  HOT_DRINKS
+  COLD_DRINKS
+}
+
+enum CoffeeOrderChannel {
+  TABLE
+  COUNTER
+  TOTEM
+}
+
+enum CoffeeOrderStatus {
+  AWAITING_PAYMENT
+  IN_QUEUE
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum CoffeePaymentMethod {
+  ONLINE_CARD
+  PAY_LINK
+  PIX
+  PAY_AT_COUNTER
+  CASH_AT_COUNTER
+  CARD_AT_COUNTER
+}
+
+enum CoffeePaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CoffeeInventoryMovementType {
+  PURCHASE
+  ENTRY
+  CONSUMPTION
+  ADJUSTMENT
+  WASTE
+}
+
+enum CoffeeFinanceDirection {
+  INCOME
+  EXPENSE
+}
+
+enum CoffeeFinanceCategory {
+  SALE
+  SUPPLY_PURCHASE
+  OPERATIONS
+  ADJUSTMENT
+}
+
+model CoffeeShopStore {
+  id            String @id @default(cuid())
+  slug          String @unique
+  name          String
+  legalName     String?
+  currencyCode  String @default("BRL")
+  defaultLocale String @default("pt")
+
+  categories         CoffeeCatalogCategory[]
+  products           CoffeeProduct[]
+  orders             CoffeeOrder[]
+  inventoryMovements CoffeeInventoryMovement[]
+  financeEntries     CoffeeFinanceEntry[]
+  teamMembers        CoffeeTeamMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("coffee_shop_stores")
+}
+
+model CoffeeTeamMember {
+  id      String @id @default(cuid())
+  storeId String
+
+  fullName       String
+  email          String? @unique
+  role           CoffeeTeamRole
+  isActive       Boolean @default(true)
+  prefersCounter Boolean @default(false)
+
+  store CoffeeShopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, role, isActive])
+  @@map("coffee_shop_team_members")
+}
+
+model CoffeeCatalogCategory {
+  id      String @id @default(cuid())
+  storeId String
+
+  area          CoffeeMenuArea
+  slug          String
+  namePt        String
+  descriptionPt String?
+  accentColor   String?
+  sortOrder     Int     @default(0)
+  isActive      Boolean @default(true)
+
+  store    CoffeeShopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products CoffeeProduct[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, slug])
+  @@index([storeId, area, sortOrder])
+  @@map("coffee_shop_catalog_categories")
+}
+
+model CoffeeProduct {
+  id         String @id @default(cuid())
+  storeId    String
+  categoryId String
+
+  slug          String
+  sku           String?
+  namePt        String
+  descriptionPt String?
+  imageUrl      String?
+  artTone       String?
+  highlightPt   String?
+
+  basePrice     Decimal? @db.Decimal(10, 2)
+  stockQuantity Int?
+  prepMinutes   Int?
+
+  isAvailable Boolean @default(true)
+  isFeatured  Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  store            CoffeeShopStore          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category         CoffeeCatalogCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems       CoffeeOrderItem[]
+  inventoryEntries CoffeeInventoryMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, slug])
+  @@index([storeId, categoryId, sortOrder])
+  @@index([storeId, isAvailable])
+  @@map("coffee_shop_products")
+}
+
+model CoffeeOrder {
+  id      String @id @default(cuid())
+  storeId String
+
+  displayCode  String @unique
+  customerName String
+  tableLabel   String?
+  notes        String?
+
+  channel       CoffeeOrderChannel
+  status        CoffeeOrderStatus
+  paymentMethod CoffeePaymentMethod
+  paymentStatus CoffeePaymentStatus @default(PENDING)
+
+  subtotal Decimal @db.Decimal(10, 2)
+  total    Decimal @db.Decimal(10, 2)
+
+  requiresCounterPayment Boolean  @default(false)
+  canStartPreparation    Boolean  @default(false)
+  paidAt                 DateTime?
+  readyAt                DateTime?
+  completedAt            DateTime?
+
+  store          CoffeeShopStore        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items          CoffeeOrderItem[]
+  financeEntries CoffeeFinanceEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, status, createdAt])
+  @@index([storeId, paymentStatus, createdAt])
+  @@map("coffee_shop_orders")
+}
+
+model CoffeeOrderItem {
+  id      String @id @default(cuid())
+  orderId String
+
+  productId          String?
+  productSlug        String
+  productNamePt      String
+  productDescription String?
+  quantity           Int
+  unitPrice          Decimal? @db.Decimal(10, 2)
+  totalPrice         Decimal? @db.Decimal(10, 2)
+
+  order   CoffeeOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product CoffeeProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@map("coffee_shop_order_items")
+}
+
+model CoffeeInventoryMovement {
+  id      String @id @default(cuid())
+  storeId String
+
+  productId String?
+
+  titlePt     String
+  description String?
+  type        CoffeeInventoryMovementType
+  quantity    Decimal? @db.Decimal(10, 2)
+  unitLabel   String?
+  unitCost    Decimal? @db.Decimal(10, 2)
+  totalAmount Decimal? @db.Decimal(10, 2)
+
+  happenedAt DateTime @default(now())
+
+  store   CoffeeShopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product CoffeeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  financeEntries CoffeeFinanceEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, type, happenedAt])
+  @@map("coffee_shop_inventory_movements")
+}
+
+model CoffeeFinanceEntry {
+  id      String @id @default(cuid())
+  storeId String
+
+  orderId             String?
+  inventoryMovementId String?
+
+  direction     CoffeeFinanceDirection
+  category      CoffeeFinanceCategory
+  descriptionPt String
+  amount        Decimal @db.Decimal(10, 2)
+  happenedAt    DateTime @default(now())
+
+  store             CoffeeShopStore          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order             CoffeeOrder?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  inventoryMovement CoffeeInventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, direction, happenedAt])
+  @@index([storeId, category, happenedAt])
+  @@map("coffee_shop_finance_entries")
 }
