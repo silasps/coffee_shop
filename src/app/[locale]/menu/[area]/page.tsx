@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
-import { CatalogExperience } from "@/components/catalog-experience";
-import { PublicHeader } from "@/components/public-header";
+import { CatalogExperienceStream } from "@/components/catalog-experience-stream";
+import { StorefrontShell } from "@/components/storefront-shell";
 import { isValidLocale } from "@/lib/coffee/i18n";
-import { getCatalog } from "@/lib/coffee/service";
+import { DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
+import { getCatalog, getStorefront } from "@/lib/coffee/service";
 import { menuAreas, type Locale, type MenuAreaSlug } from "@/lib/coffee/types";
 
 export const dynamic = "force-dynamic";
@@ -20,16 +21,20 @@ export default async function AreaPage({
 
   const typedLocale = locale as Locale;
   const typedArea = area as MenuAreaSlug;
-  const catalog = await getCatalog(typedLocale);
+  const catalogPromise = getCatalog(typedLocale, DEFAULT_STORE_SLUG);
+  const store = await getStorefront(DEFAULT_STORE_SLUG);
+
+  if (!store) {
+    notFound();
+  }
 
   return (
-    <main className="pb-12">
-      <PublicHeader locale={typedLocale} />
-      <CatalogExperience
+    <StorefrontShell locale={typedLocale} store={store} padBottom={false}>
+      <CatalogExperienceStream
         locale={typedLocale}
-        catalog={catalog}
+        catalogPromise={catalogPromise}
         initialArea={typedArea}
       />
-    </main>
+    </StorefrontShell>
   );
 }

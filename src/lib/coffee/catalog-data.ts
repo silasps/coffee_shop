@@ -1235,8 +1235,8 @@ export const demoOrders = [
     total: 35,
     createdAt: new Date().toISOString(),
     items: [
-      { id: "item-1", name: "Croissant Bacon", quantity: 1, unitPrice: 18 },
-      { id: "item-2", name: "Cappuccino Ice", quantity: 1, unitPrice: 15 },
+      { id: "item-1", name: "Croissant Bacon", quantity: 1, unitPrice: 18, notes: null },
+      { id: "item-2", name: "Cappuccino Ice", quantity: 1, unitPrice: 15, notes: null },
     ],
   },
   {
@@ -1251,7 +1251,7 @@ export const demoOrders = [
     canStartPreparation: false,
     total: 20,
     createdAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    items: [{ id: "item-3", name: "Bacon Egg", quantity: 1, unitPrice: 20 }],
+    items: [{ id: "item-3", name: "Bacon Egg", quantity: 1, unitPrice: 20, notes: null }],
   },
   {
     id: "demo-order-3",
@@ -1266,8 +1266,8 @@ export const demoOrders = [
     total: 25,
     createdAt: new Date(Date.now() - 1000 * 60 * 19).toISOString(),
     items: [
-      { id: "item-4", name: "Espresso Grande", quantity: 1, unitPrice: 10 },
-      { id: "item-5", name: "Tapioca Americana", quantity: 1, unitPrice: 16 },
+      { id: "item-4", name: "Espresso Grande", quantity: 1, unitPrice: 10, notes: null },
+      { id: "item-5", name: "Tapioca Americana", quantity: 1, unitPrice: 16, notes: null },
     ],
   },
 ];

@@ -36,6 +36,8 @@ type Dictionary = {
   customerName: string;
   tableLabel: string;
   orderNotes: string;
+  itemNotes: string;
+  itemNotesPlaceholder: string;
   orderChannel: string;
   paymentMethod: string;
   placeOrder: string;
@@ -96,6 +98,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     customerName: "Nome para chamada",
     tableLabel: "Mesa ou referência",
     orderNotes: "Observações",
+    itemNotes: "Observações do item",
+    itemNotesPlaceholder: "Ex.: sem cebola, molho à parte, bem gelado...",
     orderChannel: "Origem do pedido",
     paymentMethod: "Forma de pagamento",
     placeOrder: "Enviar pedido",
@@ -176,6 +180,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     customerName: "Pickup name",
     tableLabel: "Table or reference",
     orderNotes: "Notes",
+    itemNotes: "Item notes",
+    itemNotesPlaceholder: "Example: no onions, sauce on the side, extra cold...",
     orderChannel: "Order origin",
     paymentMethod: "Payment method",
     placeOrder: "Place order",
@@ -256,6 +262,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     customerName: "Nombre para retiro",
     tableLabel: "Mesa o referencia",
     orderNotes: "Observaciones",
+    itemNotes: "Observaciones del item",
+    itemNotesPlaceholder: "Ej.: sin cebolla, salsa aparte, bien frío...",
     orderChannel: "Origen del pedido",
     paymentMethod: "Método de pago",
     placeOrder: "Enviar pedido",

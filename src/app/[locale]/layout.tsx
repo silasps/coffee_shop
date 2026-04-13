@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { CartProvider } from "@/components/cart-provider";
 import { isValidLocale } from "@/lib/coffee/i18n";
+import { DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 
 export default async function LocaleLayout({
   children,
@@ -15,5 +16,5 @@ export default async function LocaleLayout({
     notFound();
   }
 
-  return <CartProvider>{children}</CartProvider>;
+  return <CartProvider storeSlug={DEFAULT_STORE_SLUG}>{children}</CartProvider>;
 }

@@ -2,6 +2,8 @@ export const locales = ["pt", "en", "es"] as const;
 
 export type Locale = (typeof locales)[number];
 
+export const STOREFRONT_SLOGAN_MAX_LENGTH = 44;
+
 export const menuAreas = ["foods", "hot-drinks", "cold-drinks"] as const;
 
 export type MenuAreaSlug = (typeof menuAreas)[number];
@@ -12,6 +14,7 @@ export type CatalogCategorySeed = {
   namePt: string;
   descriptionPt?: string;
   accentColor?: string;
+  sidebarImageUrl?: string | null;
   sortOrder: number;
 };
 
@@ -20,6 +23,7 @@ export type CatalogProductSeed = {
   categorySlug: string;
   namePt: string;
   descriptionPt?: string;
+  imageUrl?: string | null;
   price: number | null;
   available?: boolean;
   featured?: boolean;
@@ -35,6 +39,25 @@ export type PublicCategory = CatalogCategorySeed & {
   products: PublicProduct[];
 };
 
+export type StorefrontConfig = {
+  id: string;
+  slug: string;
+  name: string;
+  legalName?: string | null;
+  defaultLocale: Locale;
+  currencyCode: string;
+  isActive: boolean;
+  sloganPt?: string | null;
+  storefrontDescriptionPt?: string | null;
+  logoUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSecondaryColor?: string | null;
+  brandAccentColor?: string | null;
+  contactPhone?: string | null;
+  contactWhatsapp?: string | null;
+  publicUrl: string;
+};
+
 export type PublicProduct = {
   id: string;
   slug: string;
@@ -43,6 +66,7 @@ export type PublicProduct = {
   name: string;
   description: string;
   originalName: string;
+  imageUrl: string | null;
   price: number | null;
   isAvailable: boolean;
   stockQuantity: number | null;
@@ -56,12 +80,104 @@ export type PublicAreaData = {
   categories: PublicCategory[];
 };
 
+export type CatalogDashboardProduct = {
+  id: string;
+  slug: string;
+  namePt: string;
+  descriptionPt?: string | null;
+  categorySlug: string;
+  categoryNamePt: string;
+  price: number | null;
+  stockQuantity: number | null;
+  isAvailable: boolean;
+  isFeatured: boolean;
+  imageUrl: string | null;
+  highlightPt: string | null;
+  sortOrder: number;
+};
+
+export type CatalogDashboardCategory = {
+  id: string;
+  slug: string;
+  area: MenuAreaSlug;
+  namePt: string;
+  descriptionPt?: string | null;
+  accentColor?: string | null;
+  sidebarImageUrl?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  productCount: number;
+};
+
+export type SupplierRecord = {
+  id: string;
+  name: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  documentId?: string | null;
+  paymentTerms?: string | null;
+  leadTimeDays?: number | null;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type FinanceEntryRecord = {
+  id: string;
+  direction: "INCOME" | "EXPENSE";
+  category: string;
+  descriptionPt: string;
+  amount: number;
+  supplierName?: string | null;
+  referenceCode?: string | null;
+  notes?: string | null;
+  happenedAt: string;
+};
+
+export type InventoryMovementRecord = {
+  id: string;
+  titlePt: string;
+  type: string;
+  quantity: number | null;
+  unitLabel?: string | null;
+  totalAmount: number | null;
+  supplierName?: string | null;
+  referenceCode?: string | null;
+  happenedAt: string;
+};
+
+export type OperationsDashboard = {
+  isLive: boolean;
+  store: StorefrontConfig;
+  orders: OrderSnapshot[];
+  products: CatalogDashboardProduct[];
+  categories: CatalogDashboardCategory[];
+  inventoryMovements: InventoryMovementRecord[];
+  financeEntries: FinanceEntryRecord[];
+  suppliers: SupplierRecord[];
+};
+
+export type ManagedStoreSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  isActive: boolean;
+  productCount: number;
+  supplierCount: number;
+  financeEntryCount: number;
+  publicUrl: string;
+  updatedAt: string;
+};
+
 export type CartItem = {
   slug: string;
   name: string;
   price: number;
   quantity: number;
   area: MenuAreaSlug;
+  notes?: string;
 };
 
 export type CheckoutPayload = {
@@ -97,5 +213,6 @@ export type OrderSnapshot = {
     name: string;
     quantity: number;
     unitPrice: number | null;
+    notes?: string | null;
   }>;
 };

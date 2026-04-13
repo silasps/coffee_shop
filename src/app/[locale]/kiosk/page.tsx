@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
-import { CatalogExperience } from "@/components/catalog-experience";
-import { PublicHeader } from "@/components/public-header";
+import { CatalogExperienceStream } from "@/components/catalog-experience-stream";
+import { StorefrontShell } from "@/components/storefront-shell";
+import { DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import { isValidLocale } from "@/lib/coffee/i18n";
-import { getCatalog } from "@/lib/coffee/service";
+import { getCatalog, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +20,16 @@ export default async function KioskPage({
   }
 
   const typedLocale = locale as Locale;
-  const catalog = await getCatalog(typedLocale);
+  const catalogPromise = getCatalog(typedLocale, DEFAULT_STORE_SLUG);
+  const store = await getStorefront(DEFAULT_STORE_SLUG);
+
+  if (!store) {
+    notFound();
+  }
 
   return (
-    <main className="pb-12">
-      <PublicHeader locale={typedLocale} />
-      <CatalogExperience locale={typedLocale} catalog={catalog} />
-    </main>
+    <StorefrontShell locale={typedLocale} store={store} padBottom={false}>
+      <CatalogExperienceStream locale={typedLocale} catalogPromise={catalogPromise} />
+    </StorefrontShell>
   );
 }

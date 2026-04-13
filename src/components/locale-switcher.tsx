@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getLocaleNavigation } from "@/lib/coffee/i18n";
+import { replaceLocaleInPathname } from "@/lib/coffee/paths";
 import type { Locale } from "@/lib/coffee/types";
 
 type LocaleSwitcherProps = {
@@ -28,7 +29,9 @@ export function LocaleSwitcher({
     <div
       className={
         variant === "flags" || variant === "bare-flags"
-          ? "flex items-center gap-2"
+          ? variant === "bare-flags"
+            ? "flex items-center gap-3 sm:gap-4"
+            : "flex items-center gap-2"
           : `flex flex-wrap items-center gap-2 rounded-full p-1 ${
               tone === "dark"
                 ? "border border-white/10 bg-white/8"
@@ -37,9 +40,7 @@ export function LocaleSwitcher({
       }
     >
       {getLocaleNavigation(locale).map((item) => {
-        const segments = pathname.split("/");
-        segments[1] = item.locale;
-        const href = segments.join("/") || `/${item.locale}`;
+        const href = replaceLocaleInPathname(pathname, item.locale as Locale);
 
         return (
           <Link
@@ -49,7 +50,7 @@ export function LocaleSwitcher({
             title={item.label}
             className={
               variant === "bare-flags"
-                ? `flex items-center justify-center text-[18px] leading-none transition ${
+                ? `flex items-center justify-center text-[22px] leading-none transition-transform duration-150 sm:text-[24px] ${
                     item.isActive
                       ? "scale-110 opacity-100"
                       : "opacity-78 hover:scale-105 hover:opacity-100"

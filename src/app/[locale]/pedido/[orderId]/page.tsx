@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PublicHeader } from "@/components/public-header";
+import { StorefrontShell } from "@/components/storefront-shell";
 import { formatMoney, getDictionary, isValidLocale } from "@/lib/coffee/i18n";
-import { getOrderById } from "@/lib/coffee/service";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
+import { getOrderById, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
 
 export const dynamic = "force-dynamic";
@@ -20,16 +21,17 @@ export default async function OrderConfirmationPage({
 
   const typedLocale = locale as Locale;
   const dictionary = getDictionary(typedLocale);
-  const order = await getOrderById(orderId);
+  const [store, order] = await Promise.all([
+    getStorefront(DEFAULT_STORE_SLUG),
+    getOrderById(orderId),
+  ]);
 
-  if (!order) {
+  if (!store || !order) {
     notFound();
   }
 
   return (
-    <main className="pb-12">
-      <PublicHeader locale={typedLocale} />
-
+    <StorefrontShell locale={typedLocale} store={store}>
       <section className="site-shell mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="glass-panel rounded-[34px] p-7 md:p-10">
           <p className="pill">{dictionary.orderSuccess}</p>
@@ -70,7 +72,7 @@ export default async function OrderConfirmationPage({
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href={`/${typedLocale}`} className="btn-primary">
+            <Link href={buildStorePath(DEFAULT_STORE_SLUG, typedLocale)} className="btn-primary">
               {dictionary.backToMenu}
             </Link>
             <Link href="/vendedor" className="btn-secondary">
@@ -95,6 +97,11 @@ export default async function OrderConfirmationPage({
                     <p className="mt-1 text-sm text-[var(--muted)]">
                       {item.quantity} x {formatMoney(item.unitPrice, typedLocale)}
                     </p>
+                    {item.notes?.trim() ? (
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--brand-strong)]">
+                        {dictionary.itemNotes}: {item.notes.trim()}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="font-semibold text-[var(--espresso)]">
                     {formatMoney(
@@ -108,6 +115,6 @@ export default async function OrderConfirmationPage({
           </div>
         </aside>
       </section>
-    </main>
+    </StorefrontShell>
   );
 }

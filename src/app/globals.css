@@ -71,6 +71,40 @@ button {
   margin: 0 auto;
 }
 
+.coffee-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(
+    --coffee-skeleton-base,
+    linear-gradient(180deg, rgba(125, 83, 63, 0.16), rgba(125, 83, 63, 0.09))
+  );
+}
+
+.coffee-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--coffee-skeleton-highlight, rgba(255, 255, 255, 0.65)),
+    transparent
+  );
+  animation: coffee-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.coffee-skeleton-dark {
+  --coffee-skeleton-base: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.12));
+  --coffee-skeleton-highlight: rgba(255, 255, 255, 0.3);
+}
+
+@keyframes coffee-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

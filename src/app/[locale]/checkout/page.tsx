@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { CheckoutForm } from "@/components/checkout-form";
-import { PublicHeader } from "@/components/public-header";
+import { StorefrontShell } from "@/components/storefront-shell";
 import { isValidLocale } from "@/lib/coffee/i18n";
+import { DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
+import { getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
 
 export default async function CheckoutPage({
@@ -15,12 +17,18 @@ export default async function CheckoutPage({
     notFound();
   }
 
+  const typedLocale = locale as Locale;
+  const store = await getStorefront(DEFAULT_STORE_SLUG);
+
+  if (!store) {
+    notFound();
+  }
+
   return (
-    <main className="pb-12">
-      <PublicHeader locale={locale as Locale} />
+    <StorefrontShell locale={typedLocale} store={store}>
       <section className="site-shell mt-6">
-        <CheckoutForm locale={locale as Locale} />
+        <CheckoutForm locale={typedLocale} />
       </section>
-    </main>
+    </StorefrontShell>
   );
 }

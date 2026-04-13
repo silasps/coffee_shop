@@ -1,63 +1,67 @@
-import Image from "next/image";
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { LocaleSwitcher } from "@/components/locale-switcher";
-import type { Locale } from "@/lib/coffee/types";
+import { buildStoreBasePath } from "@/lib/coffee/paths";
+import type { Locale, StorefrontConfig } from "@/lib/coffee/types";
 
 type PublicHeaderProps = {
   locale: Locale;
+  store: StorefrontConfig;
 };
 
 const headerCopy = {
   pt: {
-    slogan: "De Itamandaré para o mundo.",
+    slogan: "De Tamandaré para o mundo.",
     homeLabel: "Voltar ao início",
   },
   en: {
-    slogan: "De Itamandaré para o mundo.",
+    slogan: "De Tamandaré para o mundo.",
     homeLabel: "Back to home",
   },
   es: {
-    slogan: "De Itamandaré para o mundo.",
+    slogan: "De Tamandaré para o mundo.",
     homeLabel: "Volver al inicio",
   },
 } as const;
 
-export function PublicHeader({ locale }: PublicHeaderProps) {
+export function PublicHeader({ locale, store }: PublicHeaderProps) {
   const copy = headerCopy[locale];
+  const logoUrl = store.logoUrl || "/brand/logo-dark.png";
+  const slogan = store.sloganPt || copy.slogan;
+  const homeHref = buildStoreBasePath(store.slug, locale);
 
   return (
     <header
       data-public-header="true"
-      className="sticky top-0 z-50 bg-[var(--bg)] pb-2 pt-3"
+      className="sticky top-0 z-50 bg-[var(--bg)] pb-1 pt-2"
     >
       <div className="site-shell">
-        <div className="overflow-hidden rounded-[30px] border border-[rgba(255,255,255,0.08)] bg-[#221511] px-4 py-4 shadow-[0_18px_48px_rgba(34,21,17,0.38)] sm:px-6 sm:py-5">
-          <div className="space-y-3">
-            <div className="flex items-center gap-4 sm:gap-5">
-              <Link
-                href={`/${locale}`}
-                aria-label={copy.homeLabel}
-                className="shrink-0"
-              >
-                <div className="relative h-[72px] w-[72px] overflow-hidden rounded-[22px] border border-white/10 bg-[#fff8f1] shadow-lg sm:h-[88px] sm:w-[88px] sm:rounded-[26px]">
-                  <Image
-                    src="/brand/logo-dark.png"
-                    alt="Logo Cafeteria AT"
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              </Link>
+        <div className="overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[#221511] px-3 py-3 shadow-[0_14px_36px_rgba(34,21,17,0.34)] sm:px-5 sm:py-3.5">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[116px_minmax(0,1fr)] sm:gap-8">
+            <Link
+              href={homeHref}
+              aria-label={copy.homeLabel}
+              className="flex items-center justify-center sm:justify-start"
+            >
+              <img
+                src={logoUrl}
+                alt={`Logo ${store.name}`}
+                className="h-[88px] w-[88px] object-contain sm:h-[108px] sm:w-[108px]"
+              />
+            </Link>
 
-              <div className="min-w-0 flex-1">
-                <p className="display-title overflow-hidden text-ellipsis whitespace-nowrap text-[clamp(16px,4.8vw,32px)] font-semibold leading-none text-white">
-                  {copy.slogan}
-                </p>
+            <div className="grid min-w-0 gap-2.5 pr-1 sm:pr-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/70 sm:text-[11px]">
+                {store.name}
+              </p>
+              <p className="display-title text-[clamp(15px,4vw,30px)] font-semibold leading-[1.04] text-white">
+                {slogan}
+              </p>
+
+              <div className="flex min-h-[30px] items-center">
+                <LocaleSwitcher locale={locale} tone="dark" variant="bare-flags" />
               </div>
-            </div>
-
-            <div className="flex justify-center">
-              <LocaleSwitcher locale={locale} tone="dark" variant="bare-flags" />
             </div>
           </div>
         </div>

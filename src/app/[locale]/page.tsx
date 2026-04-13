@@ -1,4 +1,5 @@
 import { isValidLocale } from "@/lib/coffee/i18n";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 
@@ -15,6 +16,5 @@ export default async function LocaleHomePage({
     notFound();
   }
 
-  // Redireciona a home diretamente para o modo tótem
-  redirect(`/${locale}/kiosk`);
+  redirect(buildStorePath(DEFAULT_STORE_SLUG, locale as "pt" | "en" | "es"));
 }

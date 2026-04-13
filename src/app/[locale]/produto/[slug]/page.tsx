@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { ProductArt } from "@/components/product-art";
-import { PublicHeader } from "@/components/public-header";
+import { StorefrontShell } from "@/components/storefront-shell";
 import { formatMoney, getDictionary, isValidLocale } from "@/lib/coffee/i18n";
-import { getProductBySlug } from "@/lib/coffee/service";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
+import { getProductBySlug, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
 
 export const dynamic = "force-dynamic";
@@ -22,19 +23,25 @@ export default async function ProductPage({
 
   const typedLocale = locale as Locale;
   const dictionary = getDictionary(typedLocale);
-  const product = await getProductBySlug(typedLocale, slug);
+  const [store, product] = await Promise.all([
+    getStorefront(DEFAULT_STORE_SLUG),
+    getProductBySlug(typedLocale, slug, DEFAULT_STORE_SLUG),
+  ]);
 
-  if (!product) {
+  if (!store || !product) {
     notFound();
   }
 
   return (
-    <main className="pb-12">
-      <PublicHeader locale={typedLocale} />
-
+    <StorefrontShell locale={typedLocale} store={store}>
       <section className="site-shell mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="card-panel p-6">
-          <ProductArt title={product.name} tone={product.artTone} />
+          <ProductArt
+            title={product.name}
+            tone={product.artTone}
+            area={product.area}
+            imageUrl={product.imageUrl}
+          />
         </div>
 
         <div className="glass-panel rounded-[34px] p-7 md:p-10">
@@ -46,7 +53,7 @@ export default async function ProductPage({
             {product.description}
           </p>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                 Preço
@@ -63,14 +70,6 @@ export default async function ProductPage({
                 {product.isAvailable ? "Liberado para pedido" : dictionary.unavailable}
               </p>
             </div>
-            <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Preparo
-              </p>
-              <p className="mt-3 text-lg font-semibold text-[var(--espresso)]">
-                {product.prepMinutes ? `${product.prepMinutes} min` : "Sob demanda"}
-              </p>
-            </div>
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -83,7 +82,7 @@ export default async function ProductPage({
               disabled={!product.isAvailable}
             />
             <Link
-              href={`/${typedLocale}/menu/${product.area}`}
+              href={buildStorePath(DEFAULT_STORE_SLUG, typedLocale, `/menu/${product.area}`)}
               className="btn-secondary text-center"
             >
               {dictionary.backToMenu}
@@ -97,6 +96,6 @@ export default async function ProductPage({
           ) : null}
         </div>
       </section>
-    </main>
+    </StorefrontShell>
   );
 }

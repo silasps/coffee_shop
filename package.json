@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "prisma generate",
     "dev": "next dev --webpack",
+    "prebuild": "prisma generate",
     "build": "COFFEE_SHOP_SKIP_DB=1 next build --webpack",
+    "prestart": "prisma generate",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
+    "preseed": "prisma generate",
     "seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push"

@@ -72,7 +72,12 @@ export function MenuBrowser({ locale, areaData }: MenuBrowserProps) {
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {category.products.map((product) => (
                 <article key={product.slug} className="card-panel overflow-hidden p-4">
-                  <ProductArt title={product.name} tone={product.artTone} />
+                  <ProductArt
+                    title={product.name}
+                    tone={product.artTone}
+                    area={product.area}
+                    imageUrl={product.imageUrl}
+                  />
                   <div className="mt-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>

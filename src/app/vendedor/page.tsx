@@ -88,6 +88,7 @@ export default async function SellerPage() {
                     {order.items.map((item) => (
                       <li key={item.id}>
                         {item.quantity}x {item.name}
+                        {item.notes?.trim() ? ` • ${item.notes.trim()}` : ""}
                       </li>
                     ))}
                   </ul>
@@ -128,6 +129,7 @@ export default async function SellerPage() {
                     {order.items.map((item) => (
                       <li key={item.id}>
                         {item.quantity}x {item.name}
+                        {item.notes?.trim() ? ` • ${item.notes.trim()}` : ""}
                       </li>
                     ))}
                   </ul>

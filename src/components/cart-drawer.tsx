@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCart } from "@/components/cart-provider";
 import { formatMoney, getDictionary } from "@/lib/coffee/i18n";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import type { Locale } from "@/lib/coffee/types";
 
 type CartDrawerProps = {
   locale: Locale;
+  storeSlug?: string;
   tone?: "light" | "dark";
   compact?: boolean;
 };
@@ -45,12 +47,14 @@ const itemLabels: Record<Locale, string> = {
 
 export function CartDrawer({
   locale,
+  storeSlug = DEFAULT_STORE_SLUG,
   tone = "light",
   compact = false,
 }: CartDrawerProps) {
   const [open, setOpen] = useState(false);
-  const { items, itemCount, subtotal, removeItem, updateQuantity } = useCart();
+  const { items, itemCount, subtotal, removeItem, updateQuantity, setItemNotes } = useCart();
   const dictionary = getDictionary(locale);
+  const hasItems = itemCount > 0;
   const confirmLabel = confirmLabels[locale];
   const modalTitle = modalTitles[locale];
   const addMoreLabel = addMoreLabels[locale];
@@ -75,14 +79,16 @@ export function CartDrawer({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`inline-flex items-center font-semibold shadow-sm ${
+        className={`inline-flex items-center font-semibold transition shadow-sm ${
           compact
             ? "min-w-[168px] gap-2 rounded-full px-3 py-2"
             : "gap-3 rounded-full px-4 py-3 text-sm"
         } ${
           tone === "dark"
             ? "border border-white/10 bg-white/8 text-white"
-            : "border border-[var(--line)] bg-white/80 text-[var(--espresso)]"
+            : hasItems
+              ? "border border-[rgba(66,145,92,0.28)] bg-[rgba(226,247,232,0.96)] text-[#245334] shadow-[0_14px_30px_rgba(66,145,92,0.18)]"
+              : "border border-[rgba(255,255,255,0.72)] bg-[rgba(255,255,255,0.66)] text-[var(--espresso)] shadow-[0_10px_24px_rgba(61,34,23,0.08)]"
         }`}
       >
         {compact ? (
@@ -103,7 +109,11 @@ export function CartDrawer({
             </svg>
             <span className="min-w-0 text-left">
               <span className="block text-[12px] leading-none">{dictionary.cartTitle}</span>
-              <span className="mt-1 block text-[11px] leading-none text-[var(--muted)]">
+              <span
+                className={`mt-1 block text-[11px] leading-none ${
+                  hasItems ? "text-[#2f6b43]" : "text-[var(--muted)]"
+                }`}
+              >
                 {itemCount} {itemLabel} • {formatMoney(subtotal, locale)}
               </span>
             </span>
@@ -115,6 +125,8 @@ export function CartDrawer({
               className={`rounded-full px-2.5 py-1 text-xs ${
                 tone === "dark"
                   ? "bg-[#f4cf3d] text-[var(--espresso)]"
+                  : hasItems
+                    ? "bg-[#3c8d57] text-white"
                   : "bg-[var(--espresso)] text-white"
               }`}
             >
@@ -217,6 +229,19 @@ export function CartDrawer({
                             </svg>
                           </button>
                         </div>
+
+                        <label className="mt-3 block">
+                          <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+                            {dictionary.itemNotes}
+                          </span>
+                          <textarea
+                            value={item.notes ?? ""}
+                            onChange={(event) => setItemNotes(item.slug, event.target.value)}
+                            placeholder={dictionary.itemNotesPlaceholder}
+                            className="textarea min-h-20 bg-white text-sm"
+                            rows={2}
+                          />
+                        </label>
                       </div>
                     ))
                   )}
@@ -233,7 +258,7 @@ export function CartDrawer({
                   </div>
                   <div className="mt-5">
                     <Link
-                      href={`/${locale}/checkout`}
+                      href={buildStorePath(storeSlug, locale, "/checkout")}
                       className="flex w-full items-center justify-center rounded-full bg-[#f4cf3d] px-4 py-3 text-center text-base font-semibold text-[var(--espresso)] shadow-[inset_0_-2px_0_rgba(40,21,14,0.14)]"
                       onClick={() => setOpen(false)}
                     >

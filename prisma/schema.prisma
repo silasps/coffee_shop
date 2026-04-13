@@ -518,6 +518,14 @@ enum CoffeeFinanceCategory {
   SALE
   SUPPLY_PURCHASE
   OPERATIONS
+  RENT
+  PAYROLL
+  TAXES
+  UTILITIES
+  MARKETING
+  MAINTENANCE
+  EQUIPMENT
+  OTHER
   ADJUSTMENT
 }
 
@@ -528,6 +536,16 @@ model CoffeeShopStore {
   legalName     String?
   currencyCode  String @default("BRL")
   defaultLocale String @default("pt")
+  isActive      Boolean @default(true)
+
+  sloganPt               String?
+  storefrontDescriptionPt String?
+  logoUrl                String?
+  brandPrimaryColor      String?
+  brandSecondaryColor    String?
+  brandAccentColor       String?
+  contactPhone           String?
+  contactWhatsapp        String?
 
   categories         CoffeeCatalogCategory[]
   products           CoffeeProduct[]
@@ -535,6 +553,7 @@ model CoffeeShopStore {
   inventoryMovements CoffeeInventoryMovement[]
   financeEntries     CoffeeFinanceEntry[]
   teamMembers        CoffeeTeamMember[]
+  suppliers          CoffeeSupplier[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -570,6 +589,7 @@ model CoffeeCatalogCategory {
   namePt        String
   descriptionPt String?
   accentColor   String?
+  sidebarImageUrl String?
   sortOrder     Int     @default(0)
   isActive      Boolean @default(true)
 
@@ -662,6 +682,7 @@ model CoffeeOrderItem {
   productSlug        String
   productNamePt      String
   productDescription String?
+  notes              String?
   quantity           Int
   unitPrice          Decimal? @db.Decimal(10, 2)
   totalPrice         Decimal? @db.Decimal(10, 2)
@@ -681,6 +702,7 @@ model CoffeeInventoryMovement {
   storeId String
 
   productId String?
+  supplierId String?
 
   titlePt     String
   description String?
@@ -689,11 +711,13 @@ model CoffeeInventoryMovement {
   unitLabel   String?
   unitCost    Decimal? @db.Decimal(10, 2)
   totalAmount Decimal? @db.Decimal(10, 2)
+  referenceCode String?
 
   happenedAt DateTime @default(now())
 
   store   CoffeeShopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product CoffeeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier CoffeeSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   financeEntries CoffeeFinanceEntry[]
 
@@ -710,16 +734,20 @@ model CoffeeFinanceEntry {
 
   orderId             String?
   inventoryMovementId String?
+  supplierId          String?
 
   direction     CoffeeFinanceDirection
   category      CoffeeFinanceCategory
   descriptionPt String
   amount        Decimal @db.Decimal(10, 2)
   happenedAt    DateTime @default(now())
+  referenceCode String?
+  notes         String?
 
   store             CoffeeShopStore          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   order             CoffeeOrder?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
   inventoryMovement CoffeeInventoryMovement? @relation(fields: [inventoryMovementId], references: [id], onDelete: SetNull)
+  supplier          CoffeeSupplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -727,4 +755,30 @@ model CoffeeFinanceEntry {
   @@index([storeId, direction, happenedAt])
   @@index([storeId, category, happenedAt])
   @@map("coffee_shop_finance_entries")
+}
+
+model CoffeeSupplier {
+  id      String @id @default(cuid())
+  storeId String
+
+  name         String
+  contactName  String?
+  email        String?
+  phone        String?
+  whatsapp     String?
+  documentId   String?
+  paymentTerms String?
+  leadTimeDays Int?
+  notes        String?
+  isActive     Boolean @default(true)
+
+  store              CoffeeShopStore          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  inventoryMovements CoffeeInventoryMovement[]
+  financeEntries     CoffeeFinanceEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, isActive, name])
+  @@map("coffee_shop_suppliers")
 }

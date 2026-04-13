@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 
 export default function NotFoundPage() {
   return (
@@ -11,7 +12,7 @@ export default function NotFoundPage() {
         <p className="mt-5 text-base leading-8 text-[var(--muted)]">
           O conteúdo pode ter sido movido ou ainda não foi cadastrado nesta base inicial.
         </p>
-        <Link href="/pt" className="btn-primary mt-6">
+        <Link href={buildStorePath(DEFAULT_STORE_SLUG, "pt")} className="btn-primary mt-6">
           Voltar para o cardápio
         </Link>
       </div>

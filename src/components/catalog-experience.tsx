@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useDeferredValue, useRef, startTransition, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { CartDrawer } from "@/components/cart-drawer";
-import { ProductArt } from "@/components/product-art";
+import { ProductArt, SectionArt } from "@/components/product-art";
 import {
   areaHeroBackgrounds,
   formatMoney,
-  getAreaDescription,
   getAreaName,
   getDictionary,
 } from "@/lib/coffee/i18n";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import type {
   Locale,
   MenuAreaSlug,
@@ -23,13 +23,13 @@ import type {
 type CatalogExperienceProps = {
   locale: Locale;
   catalog: PublicAreaData[];
+  storeSlug?: string;
   initialArea?: MenuAreaSlug;
 };
 
 const preferredOrder: MenuAreaSlug[] = ["hot-drinks", "cold-drinks", "foods"];
-const FALLBACK_HEADER_HEIGHT = 152;
+const FALLBACK_HEADER_HEIGHT = 118;
 const FALLBACK_TOOLBAR_HEIGHT = 58;
-const FALLBACK_HERO_HEIGHT = 116;
 
 const foodCategoryLabelOverrides = {
   pt: {
@@ -91,6 +91,7 @@ const microcopy = {
 export function CatalogExperience({
   locale,
   catalog,
+  storeSlug = DEFAULT_STORE_SLUG,
   initialArea = "hot-drinks",
 }: CatalogExperienceProps) {
   const dictionary = getDictionary(locale);
@@ -100,9 +101,7 @@ export function CatalogExperience({
   const [query, setQuery] = useState("");
   const [headerHeight, setHeaderHeight] = useState(FALLBACK_HEADER_HEIGHT);
   const [toolbarHeight, setToolbarHeight] = useState(FALLBACK_TOOLBAR_HEIGHT);
-  const [heroHeight, setHeroHeight] = useState(FALLBACK_HERO_HEIGHT);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const heroRef = useRef<HTMLDivElement | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   const orderedCatalog = preferredOrder
@@ -122,6 +121,17 @@ export function CatalogExperience({
   const foodsArea = orderedCatalog.find((entry) => entry.area === "foods") ?? null;
   const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea, locale) : [];
   const activeFoodCategory = selectedFoodCategory ?? foodsArea?.categories[0]?.slug ?? null;
+  const activeFoodSidebarItem =
+    foodSidebarItems.find((item) => item.slug === activeFoodCategory) ?? null;
+  const activeFoodCategoryData =
+    foodsArea?.categories.find((category) => category.slug === activeFoodCategory) ?? null;
+  const displayArea =
+    currentArea === "foods" && activeArea && activeFoodCategoryData
+      ? {
+          ...activeArea,
+          categories: [activeFoodCategoryData],
+        }
+      : activeArea;
 
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
@@ -133,20 +143,20 @@ export function CatalogExperience({
   const isSearchMode = normalizedQuery.length > 0;
   const contentAreas = isSearchMode
     ? searchResults
-    : activeArea
-      ? [activeArea]
+    : displayArea
+      ? [displayArea]
       : [];
 
   const headerTitle = isSearchMode
     ? copy.searchResultsTitle
-    : getAreaName(currentArea, locale);
-  const headerDescription = isSearchMode
-    ? copy.searchResultsDescription
-    : getAreaDescription(currentArea, locale);
-  const toolbarTop = headerHeight + 8;
-  const stickyTop = toolbarTop + toolbarHeight + 16;
-  const contentSpacerHeight = toolbarHeight + 12;
-  const categoryScrollOffset = stickyTop + heroHeight + 20;
+    : currentArea === "foods" && activeFoodSidebarItem
+      ? activeFoodSidebarItem.label
+      : getAreaName(currentArea, locale);
+  const toolbarTop = headerHeight + 6;
+  const stickyTop = toolbarTop + toolbarHeight + 12;
+  const contentSpacerHeight = toolbarHeight + 10;
+  const viewportPanelHeight = `calc(100dvh - ${stickyTop + 16}px)`;
+  const categoryScrollOffset = 18;
 
   useEffect(() => {
     const header = document.querySelector<HTMLElement>("[data-public-header='true']");
@@ -158,10 +168,6 @@ export function CatalogExperience({
 
       if (toolbarRef.current) {
         setToolbarHeight(Math.round(toolbarRef.current.getBoundingClientRect().height));
-      }
-
-      if (heroRef.current) {
-        setHeroHeight(Math.round(heroRef.current.getBoundingClientRect().height));
       }
     };
 
@@ -179,10 +185,6 @@ export function CatalogExperience({
       resizeObserver.observe(toolbarRef.current);
     }
 
-    if (heroRef.current) {
-      resizeObserver.observe(heroRef.current);
-    }
-
     window.addEventListener("resize", measure);
 
     return () => {
@@ -192,7 +194,7 @@ export function CatalogExperience({
   }, []);
 
   return (
-    <section className="site-shell mt-4 pb-10">
+    <section className="site-shell mt-4 pb-0">
       <div
         ref={toolbarRef}
         className="fixed left-1/2 z-40 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2 bg-transparent px-1 py-1"
@@ -209,7 +211,7 @@ export function CatalogExperience({
             />
           </label>
 
-          <CartDrawer locale={locale} tone="light" compact />
+          <CartDrawer locale={locale} storeSlug={storeSlug} tone="light" compact />
         </div>
       </div>
 
@@ -219,13 +221,15 @@ export function CatalogExperience({
         <aside className="sticky self-start" style={{ top: `${stickyTop}px` }}>
           <nav
             className="no-scrollbar flex flex-col gap-5 overflow-y-auto pr-1"
-            style={{ maxHeight: `calc(100vh - ${stickyTop + 16}px)` }}
+            style={{ maxHeight: viewportPanelHeight }}
           >
             <SidebarGroup title={sidebarHeadings[locale].drinks}>
               {drinksAreas.map((areaData) => (
                 <SidebarTile
                   key={areaData.area}
                   label={getAreaName(areaData.area, locale)}
+                  area={areaData.area}
+                  imageUrl={getAreaPreviewImage(areaData)}
                   active={currentArea === areaData.area}
                   onClick={() => {
                     startTransition(() => {
@@ -242,10 +246,9 @@ export function CatalogExperience({
                   <div key={item.slug}>
                     <SidebarTile
                       label={item.label}
-                      active={
-                        currentArea === "foods" &&
-                        activeFoodCategory === item.slug
-                      }
+                      area="foods"
+                      imageUrl={item.imageUrl}
+                      active={currentArea === "foods" && activeFoodCategory === item.slug}
                       onClick={() => {
                         startTransition(() => {
                           setSelectedArea("foods");
@@ -268,68 +271,88 @@ export function CatalogExperience({
           </nav>
         </aside>
 
-        <div className="min-w-0 space-y-4">
+        <div className="sticky min-w-0 self-start" style={{ top: `${stickyTop}px` }}>
           <div
-            ref={heroRef}
-            className="sticky z-20 overflow-hidden rounded-[28px] border border-[var(--line)] bg-[#fff7f0] shadow-[0_18px_40px_rgba(61,34,23,0.08)]"
-            style={{
-              top: `${stickyTop}px`,
-              ...(isSearchMode ? {} : { backgroundImage: areaHeroBackgrounds[currentArea] }),
-            }}
+            className="flex overflow-hidden rounded-[28px] border border-[var(--line)] bg-[rgba(255,250,244,0.78)] shadow-[0_18px_40px_rgba(61,34,23,0.08)]"
+            style={{ height: viewportPanelHeight }}
           >
-            <div className="px-4 py-3 sm:px-5 sm:py-4">
-              <h1 className="display-title text-2xl font-semibold leading-none text-[var(--espresso)] sm:text-3xl">
-                {headerTitle}
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                {headerDescription}
-              </p>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div
+                className="shrink-0 overflow-hidden border-b border-[rgba(72,46,34,0.12)] bg-[rgba(255,247,240,0.94)] backdrop-blur-sm"
+                style={isSearchMode ? undefined : { backgroundImage: areaHeroBackgrounds[currentArea] }}
+              >
+                <div className="px-4 py-3 sm:px-5 sm:py-3.5">
+                  <h1 className="display-title text-2xl font-semibold leading-none text-[var(--espresso)] sm:text-3xl">
+                    {headerTitle}
+                  </h1>
+                </div>
+              </div>
+
+              <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                <div className="space-y-3">
+                  {contentAreas.length === 0 ? (
+                    <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 px-5 py-8 text-center">
+                      <p className="text-base font-semibold text-[var(--espresso)]">
+                        {copy.noResultsTitle}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                        {copy.noResultsText}
+                      </p>
+                    </div>
+                  ) : isSearchMode ? (
+                    contentAreas.map((areaData) => (
+                      <div key={areaData.area} className="space-y-3">
+                        <div className="px-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
+                            {copy.areaLabel}
+                          </p>
+                          <h2 className="display-title mt-2 text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
+                            {getAreaName(areaData.area, locale)}
+                          </h2>
+                        </div>
+
+                        {areaData.categories.map((category) => (
+                          <CategorySection
+                            key={category.slug}
+                            locale={locale}
+                            category={category}
+                            storeSlug={storeSlug}
+                            scrollOffset={categoryScrollOffset}
+                          />
+                        ))}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="space-y-3">
+                      {contentAreas[0].categories.filter((category) => category.products.length > 0)
+                        .length === 0 ? (
+                        <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 px-5 py-8 text-center">
+                          <p className="text-base font-semibold text-[var(--espresso)]">
+                            {copy.noResultsTitle}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                            {copy.noResultsText}
+                          </p>
+                        </div>
+                      ) : (
+                        contentAreas[0].categories
+                          .filter((category) => category.products.length > 0)
+                          .map((category) => (
+                            <CategorySection
+                              key={category.slug}
+                              locale={locale}
+                              category={category}
+                              storeSlug={storeSlug}
+                              scrollOffset={categoryScrollOffset}
+                            />
+                          ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-
-          {contentAreas.length === 0 ? (
-            <div className="rounded-[30px] border border-dashed border-[var(--line)] bg-white/70 px-5 py-8 text-center">
-              <p className="text-base font-semibold text-[var(--espresso)]">
-                {copy.noResultsTitle}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                {copy.noResultsText}
-              </p>
-            </div>
-          ) : isSearchMode ? (
-            contentAreas.map((areaData) => (
-              <div key={areaData.area} className="space-y-4">
-                <div className="px-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-                    {copy.areaLabel}
-                  </p>
-                  <h2 className="display-title mt-2 text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
-                    {getAreaName(areaData.area, locale)}
-                  </h2>
-                </div>
-
-                {areaData.categories.map((category) => (
-                  <CategorySection
-                    key={category.slug}
-                    locale={locale}
-                    category={category}
-                    availableLabel={copy.availableLabel}
-                    scrollOffset={categoryScrollOffset}
-                  />
-                ))}
-              </div>
-            ))
-          ) : (
-            contentAreas[0].categories.map((category) => (
-              <CategorySection
-                key={category.slug}
-                locale={locale}
-                category={category}
-                availableLabel={copy.availableLabel}
-                scrollOffset={categoryScrollOffset}
-              />
-            ))
-          )}
         </div>
       </div>
     </section>
@@ -355,10 +378,14 @@ function SidebarGroup({
 
 function SidebarTile({
   label,
+  area,
+  imageUrl,
   active,
   onClick,
 }: {
   label: string;
+  area?: MenuAreaSlug;
+  imageUrl?: string | null;
   active: boolean;
   onClick: () => void;
 }) {
@@ -367,13 +394,17 @@ function SidebarTile({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex h-[82px] w-[82px] items-center justify-center rounded-[22px] border px-2 text-center transition hover:-translate-y-[1px] sm:h-[88px] sm:w-[88px] lg:h-[92px] lg:w-[92px] ${
+      className={`relative flex h-[82px] w-[82px] items-end overflow-hidden rounded-[22px] border p-2.5 text-left transition hover:-translate-y-[1px] sm:h-[88px] sm:w-[88px] sm:p-3 lg:h-[92px] lg:w-[92px] ${
         active
-          ? "border-[#f4cf3d] bg-[#5a3425] shadow-[0_0_0_2px_rgba(244,207,61,0.28)]"
-          : "border-[rgba(90,52,37,0.2)] bg-[#5a3425] shadow-[0_10px_20px_rgba(61,34,23,0.12)]"
+          ? "border-[#f4cf3d] shadow-[0_0_0_2px_rgba(244,207,61,0.28),0_16px_28px_rgba(61,34,23,0.18)]"
+          : "border-[rgba(90,52,37,0.2)] shadow-[0_10px_20px_rgba(61,34,23,0.12)]"
       }`}
     >
-      <span className="display-title text-[11px] leading-[1.15] text-white sm:text-[12px]">
+      <SectionArt label={label} area={area} imageUrl={imageUrl} />
+      <span
+        className="display-title relative z-10 block w-full break-words text-[12px] leading-[0.96] text-white sm:text-[13px]"
+        style={{ textShadow: "0 3px 14px rgba(0, 0, 0, 0.5)" }}
+      >
         {label}
       </span>
     </button>
@@ -383,12 +414,12 @@ function SidebarTile({
 function CategorySection({
   locale,
   category,
-  availableLabel,
+  storeSlug,
   scrollOffset,
 }: {
   locale: Locale;
   category: PublicCategory;
-  availableLabel: string;
+  storeSlug: string;
   scrollOffset: number;
 }) {
   const dictionary = getDictionary(locale);
@@ -421,7 +452,7 @@ function CategorySection({
             key={product.slug}
             locale={locale}
             product={product}
-            availableLabel={availableLabel}
+            storeSlug={storeSlug}
           />
         ))}
       </div>
@@ -432,35 +463,42 @@ function CategorySection({
 function ProductRow({
   locale,
   product,
-  availableLabel,
+  storeSlug,
 }: {
   locale: Locale;
   product: PublicProduct;
-  availableLabel: string;
+  storeSlug: string;
 }) {
   const router = useRouter();
   const dictionary = getDictionary(locale);
+  const productHref = buildStorePath(storeSlug, locale, `/produto/${product.slug}`);
 
   return (
     <article
       role="link"
       tabIndex={0}
       aria-label={`${dictionary.detailLabel}: ${product.name}`}
-      onClick={() => router.push(`/${locale}/produto/${product.slug}`)}
+      onClick={() => router.push(productHref)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          router.push(`/${locale}/produto/${product.slug}`);
+          router.push(productHref);
         }
       }}
       className="cursor-pointer rounded-[26px] border border-[rgba(72,46,34,0.1)] bg-white p-3 shadow-[0_12px_28px_rgba(61,34,23,0.05)] transition hover:-translate-y-[1px] sm:p-4"
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="shrink-0">
-          <ProductArt title={product.name} tone={product.artTone} size="compact" />
+      <div className="grid grid-cols-[minmax(96px,1fr)_minmax(0,3fr)] items-stretch gap-3 sm:grid-cols-[minmax(110px,1fr)_minmax(0,3fr)] sm:gap-4">
+        <div className="h-full">
+          <ProductArt
+            title={product.name}
+            tone={product.artTone}
+            size="column"
+            area={product.area}
+            imageUrl={product.imageUrl}
+          />
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="flex min-h-[168px] min-w-0 flex-col">
           <div className="min-w-0">
             <h3 className="text-base font-semibold leading-5 text-[var(--espresso)] sm:text-lg">
               {product.name}
@@ -475,34 +513,29 @@ function ProductRow({
           <p className="mt-2 text-[13px] leading-5 text-[var(--muted)]">
             {product.description}
           </p>
-        </div>
-      </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-[22px] font-semibold leading-none text-[var(--espresso)]">
-            {formatMoney(product.price, locale)}
-          </p>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-            {product.prepMinutes ? `${product.prepMinutes} min` : availableLabel}
-          </p>
-        </div>
-      </div>
+          <div className="mt-auto pt-4">
+            <p className="text-[22px] font-semibold leading-none text-[var(--espresso)]">
+              {formatMoney(product.price, locale)}
+            </p>
 
-      <div
-        className="mt-4"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <AddToCartButton
-          locale={locale}
-          slug={product.slug}
-          name={product.originalName}
-          price={product.price}
-          area={product.area}
-          disabled={!product.isAvailable}
-          variant="compact"
-        />
+            <div
+              className="mt-3"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <AddToCartButton
+                locale={locale}
+                slug={product.slug}
+                name={product.originalName}
+                price={product.price}
+                area={product.area}
+                disabled={!product.isAvailable}
+                variant="compact"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </article>
   );
@@ -517,7 +550,21 @@ function buildFoodSidebarItems(areaData: PublicAreaData, locale: Locale) {
       category.slug in labels
         ? labels[category.slug as keyof typeof labels]
         : category.name,
+    imageUrl: getCategoryPreviewImage(category),
   }));
+}
+
+function getAreaPreviewImage(areaData: PublicAreaData) {
+  return (
+    areaData.categories.find((category) => category.sidebarImageUrl)?.sidebarImageUrl ??
+    areaData.categories
+      .flatMap((category) => category.products)
+      .find((product) => product.imageUrl)?.imageUrl ?? null
+  );
+}
+
+function getCategoryPreviewImage(category: PublicCategory) {
+  return category.sidebarImageUrl ?? category.products.find((product) => product.imageUrl)?.imageUrl ?? null;
 }
 
 function normalizeAreaData(areaData: PublicAreaData): PublicAreaData {

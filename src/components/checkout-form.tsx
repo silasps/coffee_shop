@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { startTransition, useState } from "react";
 import { useCart } from "@/components/cart-provider";
 import { formatMoney, getDictionary } from "@/lib/coffee/i18n";
+import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import type { Locale } from "@/lib/coffee/types";
 
 type CheckoutFormProps = {
   locale: Locale;
+  storeSlug?: string;
 };
 
 type SubmissionState = {
@@ -16,7 +18,10 @@ type SubmissionState = {
   error: string | null;
 };
 
-export function CheckoutForm({ locale }: CheckoutFormProps) {
+export function CheckoutForm({
+  locale,
+  storeSlug = DEFAULT_STORE_SLUG,
+}: CheckoutFormProps) {
   const { items, subtotal, clear } = useCart();
   const router = useRouter();
   const dictionary = getDictionary(locale);
@@ -24,8 +29,8 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
     isPending: false,
     error: null,
   });
-  const [channel, setChannel] = useState("TABLE");
   const [paymentMethod, setPaymentMethod] = useState("PIX");
+  const channel = "TABLE" as const;
   const counterPayment =
     paymentMethod === "PAY_AT_COUNTER" ||
     paymentMethod === "CASH_AT_COUNTER" ||
@@ -35,7 +40,7 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
     return (
       <div className="card-panel p-8 text-center">
         <p className="text-lg text-[var(--muted)]">{dictionary.cartEmpty}</p>
-        <Link href={`/${locale}`} className="btn-primary mt-5">
+        <Link href={buildStorePath(storeSlug, locale)} className="btn-primary mt-5">
           {dictionary.backToMenu}
         </Link>
       </div>
@@ -61,11 +66,10 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
                 },
                 body: JSON.stringify({
                   customerName: formData.get("customerName"),
-                  tableLabel: formData.get("tableLabel"),
-                  notes: formData.get("notes"),
                   channel,
                   paymentMethod,
                   locale,
+                  storeSlug,
                   items,
                 }),
               });
@@ -80,7 +84,7 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
               }
 
               clear();
-              router.push(`/${locale}/pedido/${result.orderId}`);
+              router.push(buildStorePath(storeSlug, locale, `/pedido/${result.orderId}`));
             } catch (error) {
               setState({
                 isPending: false,
@@ -106,7 +110,7 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
+        <div className="mt-8 space-y-5">
           <label className="block">
             <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
               {dictionary.customerName}
@@ -117,47 +121,6 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
               className="field"
               placeholder={dictionary.callNameHint}
             />
-          </label>
-
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-              {dictionary.tableLabel}
-            </span>
-            <input
-              name="tableLabel"
-              className="field"
-              placeholder="Mesa 8, retirada no balcão, empresa..."
-            />
-          </label>
-        </div>
-
-        <label className="mt-5 block">
-          <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-            {dictionary.orderNotes}
-          </span>
-          <textarea
-            name="notes"
-            className="textarea min-h-28"
-            placeholder="Sem açúcar, cortar ao meio, chamar retirada..."
-          />
-        </label>
-
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-              {dictionary.orderChannel}
-            </span>
-            <select
-              className="select"
-              value={channel}
-              onChange={(event) => setChannel(event.target.value)}
-            >
-              {Object.entries(dictionary.checkoutChannels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
           </label>
 
           <label className="block">
@@ -215,6 +178,11 @@ export function CheckoutForm({ locale }: CheckoutFormProps) {
                   <p className="mt-1 text-sm text-[var(--muted)]">
                     {item.quantity} x {formatMoney(item.price, locale)}
                   </p>
+                  {item.notes?.trim() ? (
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--brand-strong)]">
+                      {dictionary.itemNotes}: {item.notes.trim()}
+                    </p>
+                  ) : null}
                 </div>
                 <p className="font-semibold text-[var(--espresso)]">
                   {formatMoney(item.price * item.quantity, locale)}
