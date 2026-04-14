@@ -11,6 +11,7 @@ import {
   updateCategoryVisualAction,
   updateProductAction,
 } from "@/app/admin/actions";
+import { resolveLocalizedText } from "@/lib/coffee/content-i18n";
 import { formatMoney } from "@/lib/coffee/i18n";
 import type {
   CatalogDashboardCategory,
@@ -43,6 +44,75 @@ const sidebarGroupLabels = {
 const foodCategoryLabelOverrides = {
   desserts: "Bolos",
 } as const;
+
+function getCategoryTranslationValue(
+  category: CatalogDashboardCategory | null | undefined,
+  locale: "en" | "es",
+  field: "name" | "description",
+) {
+  if (!category) {
+    return "";
+  }
+
+  return (
+    resolveLocalizedText(
+      locale,
+      field === "name"
+        ? {
+            pt: category.namePt,
+            en: category.nameEn,
+            es: category.nameEs,
+          }
+        : {
+            pt: category.descriptionPt,
+            en: category.descriptionEn,
+            es: category.descriptionEs,
+          },
+      {
+        kind: field === "name" ? "category-name" : "category-description",
+        slug: category.slug,
+      },
+    ) ?? ""
+  );
+}
+
+function getProductTranslationValue(
+  product: CatalogDashboardProduct,
+  locale: "en" | "es",
+  field: "name" | "description" | "highlight",
+) {
+  return (
+    resolveLocalizedText(
+      locale,
+      field === "name"
+        ? {
+            pt: product.namePt,
+            en: product.nameEn,
+            es: product.nameEs,
+          }
+        : field === "description"
+          ? {
+              pt: product.descriptionPt,
+              en: product.descriptionEn,
+              es: product.descriptionEs,
+            }
+          : {
+              pt: product.highlightPt,
+              en: product.highlightEn,
+              es: product.highlightEs,
+            },
+      {
+        kind:
+          field === "name"
+            ? "product-name"
+            : field === "description"
+              ? "product-description"
+              : "product-highlight",
+        slug: product.slug,
+      },
+    ) ?? ""
+  );
+}
 
 function getCategoryPreviewImage(category: PublicCategory) {
   return category.sidebarImageUrl ?? category.products.find((product) => product.imageUrl)?.imageUrl ?? null;
@@ -302,28 +372,76 @@ export function AdminProductsPanel({
 
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
                           <div className="grid gap-4">
-                            <label className="block">
-                              <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                                Nome da seção
-                              </span>
-                              <input
-                                name="namePt"
-                                className="field"
-                                placeholder="Bebidas especiais"
-                                required
-                              />
-                            </label>
+                            <div className="grid gap-4 lg:grid-cols-3">
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Nome PT
+                                </span>
+                                <input
+                                  name="namePt"
+                                  className="field"
+                                  placeholder="Bebidas especiais"
+                                  required
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Name EN
+                                </span>
+                                <input
+                                  name="nameEn"
+                                  className="field"
+                                  placeholder="Signature drinks"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Nombre ES
+                                </span>
+                                <input
+                                  name="nameEs"
+                                  className="field"
+                                  placeholder="Bebidas especiales"
+                                />
+                              </label>
+                            </div>
 
-                            <label className="block">
-                              <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                                Descrição
-                              </span>
-                              <textarea
-                                name="descriptionPt"
-                                className="textarea min-h-24"
-                                placeholder="Como essa nova seção aparece na vitrine."
-                              />
-                            </label>
+                            <div className="grid gap-4 lg:grid-cols-3">
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Descricao PT
+                                </span>
+                                <textarea
+                                  name="descriptionPt"
+                                  className="textarea min-h-24"
+                                  placeholder="Como essa nova seção aparece na vitrine."
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Description EN
+                                </span>
+                                <textarea
+                                  name="descriptionEn"
+                                  className="textarea min-h-24"
+                                  placeholder="How this section appears on the storefront."
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                  Descripcion ES
+                                </span>
+                                <textarea
+                                  name="descriptionEs"
+                                  className="textarea min-h-24"
+                                  placeholder="Como aparece esta seccion en la vitrina."
+                                />
+                              </label>
+                            </div>
+                            <p className="-mt-1 text-xs leading-5 text-[var(--muted)]">
+                              Ingles e espanhol podem ficar vazios. O sistema gera uma traducao
+                              automatica e voce ajusta depois se quiser.
+                            </p>
 
                             <div className="grid gap-4 md:grid-cols-2">
                               <label className="block">
@@ -435,6 +553,72 @@ export function AdminProductsPanel({
                                     <input type="hidden" name="storeSlug" value={storeSlug} />
                                     <input type="hidden" name="categoryId" value={categoryRecord?.id ?? ""} />
 
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Nome PT
+                                        </span>
+                                        <input
+                                          name="namePt"
+                                          className="field"
+                                          defaultValue={categoryRecord?.namePt ?? displayCategory.namePt}
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Name EN
+                                        </span>
+                                        <input
+                                          name="nameEn"
+                                          className="field"
+                                          defaultValue={getCategoryTranslationValue(categoryRecord, "en", "name")}
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Nombre ES
+                                        </span>
+                                        <input
+                                          name="nameEs"
+                                          className="field"
+                                          defaultValue={getCategoryTranslationValue(categoryRecord, "es", "name")}
+                                        />
+                                      </label>
+                                    </div>
+
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Descricao PT
+                                        </span>
+                                        <textarea
+                                          name="descriptionPt"
+                                          className="textarea min-h-24"
+                                          defaultValue={categoryRecord?.descriptionPt ?? displayCategory.descriptionPt ?? ""}
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Description EN
+                                        </span>
+                                        <textarea
+                                          name="descriptionEn"
+                                          className="textarea min-h-24"
+                                          defaultValue={getCategoryTranslationValue(categoryRecord, "en", "description")}
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Descripcion ES
+                                        </span>
+                                        <textarea
+                                          name="descriptionEs"
+                                          className="textarea min-h-24"
+                                          defaultValue={getCategoryTranslationValue(categoryRecord, "es", "description")}
+                                        />
+                                      </label>
+                                    </div>
+
                                     <ImageUploadField
                                       name="sidebarImageUrl"
                                       label="Imagem da lateral esquerda"
@@ -479,19 +663,51 @@ export function AdminProductsPanel({
                                     <input type="hidden" name="storeSlug" value={storeSlug} />
                                     <input type="hidden" name="categorySlug" value={displayCategory.slug} />
 
-                                    <label className="block">
-                                      <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                                        Nome
-                                      </span>
-                                      <input name="namePt" className="field" required />
-                                    </label>
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Nome PT
+                                        </span>
+                                        <input name="namePt" className="field" required />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Name EN
+                                        </span>
+                                        <input name="nameEn" className="field" />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Nombre ES
+                                        </span>
+                                        <input name="nameEs" className="field" />
+                                      </label>
+                                    </div>
 
-                                    <label className="block">
-                                      <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                                        Descricao
-                                      </span>
-                                      <textarea name="descriptionPt" className="textarea min-h-24" />
-                                    </label>
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Descricao PT
+                                        </span>
+                                        <textarea name="descriptionPt" className="textarea min-h-24" />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Description EN
+                                        </span>
+                                        <textarea name="descriptionEn" className="textarea min-h-24" />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Descripcion ES
+                                        </span>
+                                        <textarea name="descriptionEs" className="textarea min-h-24" />
+                                      </label>
+                                    </div>
+                                    <p className="-mt-1 text-xs leading-5 text-[var(--muted)]">
+                                      Se EN ou ES ficarem vazios, a vitrine recebe uma traducao
+                                      automatica mais natural para cafeterias.
+                                    </p>
 
                                     <div className="grid gap-4 md:grid-cols-3">
                                       <label className="block">
@@ -525,16 +741,38 @@ export function AdminProductsPanel({
                                       cropAspectRatio={5 / 4}
                                     />
 
-                                    <label className="block">
-                                      <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                                        Destaque
-                                      </span>
-                                      <input
-                                        name="highlightPt"
-                                        className="field"
-                                        placeholder="Mais vendido, lancamento..."
-                                      />
-                                    </label>
+                                    <div className="grid gap-4 lg:grid-cols-3">
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Destaque PT
+                                        </span>
+                                        <input
+                                          name="highlightPt"
+                                          className="field"
+                                          placeholder="Mais vendido, lancamento..."
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Highlight EN
+                                        </span>
+                                        <input
+                                          name="highlightEn"
+                                          className="field"
+                                          placeholder="Best seller, new..."
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                                          Destaque ES
+                                        </span>
+                                        <input
+                                          name="highlightEs"
+                                          className="field"
+                                          placeholder="Mas pedido, novedad..."
+                                        />
+                                      </label>
+                                    </div>
 
                                     <div className="grid gap-3 md:grid-cols-2">
                                       <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
@@ -661,27 +899,71 @@ export function AdminProductsPanel({
                                             cropAspectRatio={5 / 4}
                                           />
 
-                                          <label className="block">
-                                            <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
-                                              Nome
-                                            </span>
-                                            <input
-                                              name="namePt"
-                                              className="field"
-                                              defaultValue={product.namePt}
-                                            />
-                                          </label>
+                                          <div className="grid gap-3 lg:grid-cols-3">
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Nome PT
+                                              </span>
+                                              <input
+                                                name="namePt"
+                                                className="field"
+                                                defaultValue={product.namePt}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Name EN
+                                              </span>
+                                              <input
+                                                name="nameEn"
+                                                className="field"
+                                                defaultValue={getProductTranslationValue(product, "en", "name")}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Nombre ES
+                                              </span>
+                                              <input
+                                                name="nameEs"
+                                                className="field"
+                                                defaultValue={getProductTranslationValue(product, "es", "name")}
+                                              />
+                                            </label>
+                                          </div>
 
-                                          <label className="block">
-                                            <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
-                                              Descricao
-                                            </span>
-                                            <textarea
-                                              name="descriptionPt"
-                                              className="textarea min-h-20"
-                                              defaultValue={product.descriptionPt ?? ""}
-                                            />
-                                          </label>
+                                          <div className="grid gap-3 lg:grid-cols-3">
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Descricao PT
+                                              </span>
+                                              <textarea
+                                                name="descriptionPt"
+                                                className="textarea min-h-20"
+                                                defaultValue={product.descriptionPt ?? ""}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Description EN
+                                              </span>
+                                              <textarea
+                                                name="descriptionEn"
+                                                className="textarea min-h-20"
+                                                defaultValue={getProductTranslationValue(product, "en", "description")}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Descripcion ES
+                                              </span>
+                                              <textarea
+                                                name="descriptionEs"
+                                                className="textarea min-h-20"
+                                                defaultValue={getProductTranslationValue(product, "es", "description")}
+                                              />
+                                            </label>
+                                          </div>
 
                                           <div className="grid gap-3 sm:grid-cols-3">
                                             <label className="block">
@@ -716,16 +998,38 @@ export function AdminProductsPanel({
                                             </label>
                                           </div>
 
-                                          <label className="block">
-                                            <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
-                                              Destaque
-                                            </span>
-                                            <input
-                                              name="highlightPt"
-                                              className="field"
-                                              defaultValue={product.highlightPt ?? ""}
-                                            />
-                                          </label>
+                                          <div className="grid gap-3 lg:grid-cols-3">
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Destaque PT
+                                              </span>
+                                              <input
+                                                name="highlightPt"
+                                                className="field"
+                                                defaultValue={product.highlightPt ?? ""}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Highlight EN
+                                              </span>
+                                              <input
+                                                name="highlightEn"
+                                                className="field"
+                                                defaultValue={getProductTranslationValue(product, "en", "highlight")}
+                                              />
+                                            </label>
+                                            <label className="block">
+                                              <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
+                                                Destaque ES
+                                              </span>
+                                              <input
+                                                name="highlightEs"
+                                                className="field"
+                                                defaultValue={getProductTranslationValue(product, "es", "highlight")}
+                                              />
+                                            </label>
+                                          </div>
 
                                           <div className="grid gap-2 sm:grid-cols-2">
                                             <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--line)] bg-white/70 px-3 py-2">

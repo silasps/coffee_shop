@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { resolveStorefrontCopy } from "@/lib/coffee/content-i18n";
 import { buildStoreBasePath } from "@/lib/coffee/paths";
 import type { Locale, StorefrontConfig } from "@/lib/coffee/types";
 
@@ -16,11 +17,11 @@ const headerCopy = {
     homeLabel: "Voltar ao início",
   },
   en: {
-    slogan: "De Tamandaré para o mundo.",
+    slogan: "From Tamandare to the world.",
     homeLabel: "Back to home",
   },
   es: {
-    slogan: "De Tamandaré para o mundo.",
+    slogan: "De Tamandare al mundo.",
     homeLabel: "Volver al inicio",
   },
 } as const;
@@ -28,7 +29,8 @@ const headerCopy = {
 export function PublicHeader({ locale, store }: PublicHeaderProps) {
   const copy = headerCopy[locale];
   const logoUrl = store.logoUrl || "/brand/logo-dark.png";
-  const slogan = store.sloganPt || copy.slogan;
+  const storefrontCopy = resolveStorefrontCopy(locale, store);
+  const slogan = storefrontCopy.slogan || copy.slogan;
   const homeHref = buildStoreBasePath(store.slug, locale);
 
   return (
@@ -44,11 +46,13 @@ export function PublicHeader({ locale, store }: PublicHeaderProps) {
               aria-label={copy.homeLabel}
               className="flex items-center justify-center sm:justify-start"
             >
-              <img
-                src={logoUrl}
-                alt={`Logo ${store.name}`}
-                className="h-[88px] w-[88px] object-contain sm:h-[108px] sm:w-[108px]"
-              />
+              <div className="h-[88px] w-[88px] overflow-hidden rounded-[24px] border border-white/12 sm:h-[108px] sm:w-[108px] sm:rounded-[28px]">
+                <img
+                  src={logoUrl}
+                  alt={`Logo ${store.name}`}
+                  className="h-full w-full object-cover"
+                />
+              </div>
             </Link>
 
             <div className="grid min-w-0 gap-2.5 pr-1 sm:pr-5">

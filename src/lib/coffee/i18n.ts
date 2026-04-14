@@ -49,6 +49,16 @@ type Dictionary = {
   viewSellerBoard: string;
   backToMenu: string;
   callNameHint: string;
+  priceLabel: string;
+  availabilityLabel: string;
+  availableForOrder: string;
+  nameLabel: string;
+  statusLabel: string;
+  totalLabel: string;
+  orderSummaryTitle: string;
+  operationFlowTitle: string;
+  operationFlowItems: string[];
+  orderStatuses: Record<string, string>;
   areaNames: Record<MenuAreaSlug, string>;
   areaDescriptions: Record<MenuAreaSlug, string>;
   checkoutChannels: Record<string, string>;
@@ -114,6 +124,27 @@ export const dictionaries: Record<Locale, Dictionary> = {
     viewSellerBoard: "Abrir painel do vendedor",
     backToMenu: "Voltar ao cardápio",
     callNameHint: "Ex.: Ana, Mesa 8, Retirada João",
+    priceLabel: "Preço",
+    availabilityLabel: "Disponibilidade",
+    availableForOrder: "Liberado para pedido",
+    nameLabel: "Nome",
+    statusLabel: "Status",
+    totalLabel: "Total",
+    orderSummaryTitle: "Resumo do pedido",
+    operationFlowTitle: "Fluxo operacional",
+    operationFlowItems: [
+      "Pedidos de mesa, balcão e totem entram na mesma fila do vendedor.",
+      "O nome informado é usado para chamada quando o pedido estiver pronto.",
+      "Pagamentos no balcão ficam em espera até liberação manual no painel.",
+    ],
+    orderStatuses: {
+      AWAITING_PAYMENT: "Aguardando pagamento",
+      IN_QUEUE: "Na fila",
+      PREPARING: "Em preparo",
+      READY: "Pronto",
+      COMPLETED: "Concluído",
+      CANCELLED: "Cancelado",
+    },
     areaNames: {
       foods: "Comidas",
       "hot-drinks": "Bebidas Quentes",
@@ -196,6 +227,27 @@ export const dictionaries: Record<Locale, Dictionary> = {
     viewSellerBoard: "Open seller board",
     backToMenu: "Back to the menu",
     callNameHint: "Example: Ana, Table 8, Pickup John",
+    priceLabel: "Price",
+    availabilityLabel: "Availability",
+    availableForOrder: "Ready to order",
+    nameLabel: "Name",
+    statusLabel: "Status",
+    totalLabel: "Total",
+    orderSummaryTitle: "Order summary",
+    operationFlowTitle: "How the order flows",
+    operationFlowItems: [
+      "Table, counter, and kiosk orders all land in the same seller queue.",
+      "The pickup name is what the team calls out when the order is ready.",
+      "Counter payments stay on hold until the team releases the order manually.",
+    ],
+    orderStatuses: {
+      AWAITING_PAYMENT: "Awaiting payment",
+      IN_QUEUE: "In queue",
+      PREPARING: "Preparing",
+      READY: "Ready",
+      COMPLETED: "Completed",
+      CANCELLED: "Canceled",
+    },
     areaNames: {
       foods: "Food",
       "hot-drinks": "Hot Drinks",
@@ -278,6 +330,27 @@ export const dictionaries: Record<Locale, Dictionary> = {
     viewSellerBoard: "Abrir panel del vendedor",
     backToMenu: "Volver al menú",
     callNameHint: "Ej.: Ana, Mesa 8, Retiro Juan",
+    priceLabel: "Precio",
+    availabilityLabel: "Disponibilidad",
+    availableForOrder: "Listo para pedir",
+    nameLabel: "Nombre",
+    statusLabel: "Estado",
+    totalLabel: "Total",
+    orderSummaryTitle: "Resumen del pedido",
+    operationFlowTitle: "Flujo operativo",
+    operationFlowItems: [
+      "Los pedidos de mesa, barra y tótem entran en la misma cola del vendedor.",
+      "El nombre indicado se usa para llamar al cliente cuando el pedido esté listo.",
+      "Los pagos en barra quedan en espera hasta la liberación manual del panel.",
+    ],
+    orderStatuses: {
+      AWAITING_PAYMENT: "Esperando pago",
+      IN_QUEUE: "En cola",
+      PREPARING: "En preparacion",
+      READY: "Listo",
+      COMPLETED: "Completado",
+      CANCELLED: "Cancelado",
+    },
     areaNames: {
       foods: "Comidas",
       "hot-drinks": "Bebidas Calientes",
@@ -532,6 +605,10 @@ export function getAreaName(area: MenuAreaSlug, locale: Locale) {
 
 export function getAreaDescription(area: MenuAreaSlug, locale: Locale) {
   return getDictionary(locale).areaDescriptions[area];
+}
+
+export function getOrderStatusLabel(status: string, locale: Locale) {
+  return getDictionary(locale).orderStatuses[status] ?? status;
 }
 
 export function isValidLocale(locale: string): locale is Locale {

@@ -1,0 +1,19 @@
+ALTER TABLE "coffee_shop_stores"
+ADD COLUMN IF NOT EXISTS "sloganEn" TEXT,
+ADD COLUMN IF NOT EXISTS "sloganEs" TEXT,
+ADD COLUMN IF NOT EXISTS "storefrontDescriptionEn" TEXT,
+ADD COLUMN IF NOT EXISTS "storefrontDescriptionEs" TEXT;
+
+ALTER TABLE "coffee_shop_catalog_categories"
+ADD COLUMN IF NOT EXISTS "nameEn" TEXT,
+ADD COLUMN IF NOT EXISTS "nameEs" TEXT,
+ADD COLUMN IF NOT EXISTS "descriptionEn" TEXT,
+ADD COLUMN IF NOT EXISTS "descriptionEs" TEXT;
+
+ALTER TABLE "coffee_shop_products"
+ADD COLUMN IF NOT EXISTS "nameEn" TEXT,
+ADD COLUMN IF NOT EXISTS "nameEs" TEXT,
+ADD COLUMN IF NOT EXISTS "descriptionEn" TEXT,
+ADD COLUMN IF NOT EXISTS "descriptionEs" TEXT,
+ADD COLUMN IF NOT EXISTS "highlightEn" TEXT,
+ADD COLUMN IF NOT EXISTS "highlightEs" TEXT;

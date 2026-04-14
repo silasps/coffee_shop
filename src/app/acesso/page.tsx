@@ -11,7 +11,7 @@ const accessCards = [
     title: "Administrador",
     href: "/admin",
     description:
-      "Cadastro de produtos, disponibilidade, imagens, estoque e movimentos de insumos.",
+      "Visao global da plataforma: clientes, cafeterias, mensalidades e cobranca centralizada.",
   },
   {
     title: "Financeiro",
@@ -30,8 +30,8 @@ export default function AccessPage() {
           Portais operacionais
         </h1>
         <p className="mt-5 max-w-3xl text-base leading-8 text-[var(--muted)]">
-          Nesta primeira base, os portais já estão separados por função. A autenticação
-          real pode ser conectada na próxima etapa usando o mesmo banco compartilhado.
+          Nesta base, os portais ja estao separados por funcao. A camada de autenticacao
+          fina entra na proxima etapa para limitar o que cada gestor pode enxergar.
         </p>
       </section>
 
@@ -57,6 +57,7 @@ export default function AccessPage() {
           <li>Cliente pode pedir na mesa, no balcão ou no totem.</li>
           <li>Todo pedido cai na mesma fila do vendedor para preparo.</li>
           <li>Pedidos com pagamento no balcão só liberam produção após confirmação.</li>
+          <li>O admin global acompanha clientes, varias lojas por cliente e a cobranca mensal.</li>
           <li>Financeiro acompanha venda, compra de insumos e movimentos operacionais.</li>
         </ul>
       </section>

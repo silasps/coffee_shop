@@ -102,6 +102,7 @@ export function CatalogExperience({
   const [headerHeight, setHeaderHeight] = useState(FALLBACK_HEADER_HEIGHT);
   const [toolbarHeight, setToolbarHeight] = useState(FALLBACK_TOOLBAR_HEIGHT);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   const orderedCatalog = preferredOrder
@@ -156,7 +157,16 @@ export function CatalogExperience({
   const stickyTop = toolbarTop + toolbarHeight + 12;
   const contentSpacerHeight = toolbarHeight + 10;
   const viewportPanelHeight = `calc(100dvh - ${stickyTop + 16}px)`;
-  const categoryScrollOffset = 18;
+
+  const resetContentScroll = () => {
+    contentRef.current?.scrollTo({ top: 0, left: 0 });
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        contentRef.current?.scrollTo({ top: 0, left: 0 });
+      });
+    });
+  };
 
   useEffect(() => {
     const header = document.querySelector<HTMLElement>("[data-public-header='true']");
@@ -232,6 +242,7 @@ export function CatalogExperience({
                   imageUrl={getAreaPreviewImage(areaData)}
                   active={currentArea === areaData.area}
                   onClick={() => {
+                    resetContentScroll();
                     startTransition(() => {
                       setSelectedArea(areaData.area);
                     });
@@ -250,17 +261,10 @@ export function CatalogExperience({
                       imageUrl={item.imageUrl}
                       active={currentArea === "foods" && activeFoodCategory === item.slug}
                       onClick={() => {
+                        resetContentScroll();
                         startTransition(() => {
                           setSelectedArea("foods");
                           setSelectedFoodCategory(item.slug);
-                        });
-
-                        window.requestAnimationFrame(() => {
-                          window.requestAnimationFrame(() => {
-                            document
-                              .getElementById(item.slug)
-                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                          });
                         });
                       }}
                     />
@@ -288,7 +292,10 @@ export function CatalogExperience({
                 </div>
               </div>
 
-              <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+              <div
+                ref={contentRef}
+                className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-4"
+              >
                 <div className="space-y-3">
                   {contentAreas.length === 0 ? (
                     <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 px-5 py-8 text-center">
@@ -317,7 +324,6 @@ export function CatalogExperience({
                             locale={locale}
                             category={category}
                             storeSlug={storeSlug}
-                            scrollOffset={categoryScrollOffset}
                           />
                         ))}
                       </div>
@@ -343,7 +349,6 @@ export function CatalogExperience({
                               locale={locale}
                               category={category}
                               storeSlug={storeSlug}
-                              scrollOffset={categoryScrollOffset}
                             />
                           ))
                       )}
@@ -415,38 +420,20 @@ function CategorySection({
   locale,
   category,
   storeSlug,
-  scrollOffset,
 }: {
   locale: Locale;
   category: PublicCategory;
   storeSlug: string;
-  scrollOffset: number;
 }) {
-  const dictionary = getDictionary(locale);
-
   return (
-    <section
-      id={category.slug}
-      className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]"
-      style={{ scrollMarginTop: `${scrollOffset}px` }}
-    >
-      <div className="border-b border-[rgba(72,46,34,0.08)] px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-              {dictionary.categoriesLabel}
-            </p>
-            <h2 className="display-title mt-2 text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
-              {category.name}
-            </h2>
-          </div>
-          <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">
-            {category.description}
-          </p>
-        </div>
+    <section className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]">
+      <div className="px-4 pt-4 sm:px-5 sm:pt-5">
+        <h2 className="display-title text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
+          {category.name}
+        </h2>
       </div>
 
-      <div className="space-y-3 p-4 sm:p-5">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3">
         {category.products.map((product) => (
           <ProductRow
             key={product.slug}
@@ -487,50 +474,48 @@ function ProductRow({
       }}
       className="cursor-pointer rounded-[26px] border border-[rgba(72,46,34,0.1)] bg-white p-3 shadow-[0_12px_28px_rgba(61,34,23,0.05)] transition hover:-translate-y-[1px] sm:p-4"
     >
-      <div className="grid grid-cols-[minmax(96px,1fr)_minmax(0,3fr)] items-stretch gap-3 sm:grid-cols-[minmax(110px,1fr)_minmax(0,3fr)] sm:gap-4">
-        <div className="h-full">
+      <div className="flex h-full flex-col">
+        <div className="relative">
           <ProductArt
             title={product.name}
             tone={product.artTone}
-            size="column"
+            size="default"
             area={product.area}
             imageUrl={product.imageUrl}
           />
+          {product.highlight ? (
+            <span className="absolute right-3 top-3 rounded-full bg-[rgba(255,248,236,0.9)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-strong)] shadow-[0_8px_18px_rgba(61,34,23,0.12)]">
+              {product.highlight}
+            </span>
+          ) : null}
         </div>
 
-        <div className="flex min-h-[168px] min-w-0 flex-col">
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold leading-5 text-[var(--espresso)] sm:text-lg">
-              {product.name}
-            </h3>
-            {product.highlight ? (
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-strong)]">
-                {product.highlight}
-              </p>
-            ) : null}
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h3 className="mt-4 text-base font-semibold leading-5 text-[var(--espresso)] sm:text-lg">
+            {product.name}
+          </h3>
 
           <p className="mt-2 text-[13px] leading-5 text-[var(--muted)]">
             {product.description}
           </p>
 
-          <div className="mt-auto pt-4">
+          <div className="mt-4">
             <p className="text-[22px] font-semibold leading-none text-[var(--espresso)]">
               {formatMoney(product.price, locale)}
             </p>
 
             <div
-              className="mt-3"
+              className="mt-4"
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             >
-              <AddToCartButton
-                locale={locale}
-                slug={product.slug}
-                name={product.originalName}
-                price={product.price}
-                area={product.area}
-                disabled={!product.isAvailable}
+                    <AddToCartButton
+                      locale={locale}
+                      slug={product.slug}
+                      name={product.name}
+                      price={product.price}
+                      area={product.area}
+                      disabled={!product.isAvailable}
                 variant="compact"
               />
             </div>

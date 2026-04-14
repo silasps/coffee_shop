@@ -202,12 +202,12 @@ export function CheckoutForm({
 
         <div className="card-panel p-6">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-            Fluxo operacional
+            {dictionary.operationFlowTitle}
           </p>
           <ul className="mt-4 space-y-3 text-sm leading-6 text-[var(--muted)]">
-            <li>Pedidos de mesa, balcão e totem entram na mesma fila do vendedor.</li>
-            <li>O nome informado é usado para chamada quando o pedido estiver pronto.</li>
-            <li>Pagamentos no balcão ficam em espera até liberação manual no painel.</li>
+            {dictionary.operationFlowItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
           </ul>
         </div>
       </aside>

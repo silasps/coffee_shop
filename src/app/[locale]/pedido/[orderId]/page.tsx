@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StorefrontShell } from "@/components/storefront-shell";
-import { formatMoney, getDictionary, isValidLocale } from "@/lib/coffee/i18n";
+import {
+  formatMoney,
+  getDictionary,
+  getOrderStatusLabel,
+  isValidLocale,
+} from "@/lib/coffee/i18n";
 import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import { getOrderById, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
@@ -23,7 +28,7 @@ export default async function OrderConfirmationPage({
   const dictionary = getDictionary(typedLocale);
   const [store, order] = await Promise.all([
     getStorefront(DEFAULT_STORE_SLUG),
-    getOrderById(orderId),
+    getOrderById(orderId, DEFAULT_STORE_SLUG, typedLocale),
   ]);
 
   if (!store || !order) {
@@ -47,7 +52,7 @@ export default async function OrderConfirmationPage({
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Nome
+                {dictionary.nameLabel}
               </p>
               <p className="mt-2 text-lg font-semibold text-[var(--espresso)]">
                 {order.customerName}
@@ -55,15 +60,15 @@ export default async function OrderConfirmationPage({
             </div>
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Status
+                {dictionary.statusLabel}
               </p>
               <p className="mt-2 text-lg font-semibold text-[var(--espresso)]">
-                {order.status}
+                {getOrderStatusLabel(order.status, typedLocale)}
               </p>
             </div>
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Total
+                {dictionary.totalLabel}
               </p>
               <p className="mt-2 text-lg font-semibold text-[var(--espresso)]">
                 {formatMoney(order.total, typedLocale)}
@@ -83,7 +88,7 @@ export default async function OrderConfirmationPage({
 
         <aside className="card-panel p-6">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-            Resumo do pedido
+            {dictionary.orderSummaryTitle}
           </p>
           <div className="mt-4 space-y-4">
             {order.items.map((item) => (

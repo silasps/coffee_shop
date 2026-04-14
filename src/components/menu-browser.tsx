@@ -113,7 +113,7 @@ export function MenuBrowser({ locale, areaData }: MenuBrowserProps) {
                     <AddToCartButton
                       locale={locale}
                       slug={product.slug}
-                      name={product.originalName}
+                      name={product.name}
                       price={product.price}
                       area={product.area}
                       disabled={!product.isAvailable}

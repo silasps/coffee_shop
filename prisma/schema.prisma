@@ -529,24 +529,87 @@ enum CoffeeFinanceCategory {
   ADJUSTMENT
 }
 
+enum CoffeeBillingInvoiceStatus {
+  OPEN
+  PAID
+  CANCELED
+}
+
+model CoffeeClientAccount {
+  id    String @id @default(cuid())
+  slug  String @unique
+  name  String
+
+  legalName    String?
+  ownerName    String?
+  billingEmail String?
+  phone        String?
+
+  monthlyFee        Decimal @default(150) @db.Decimal(10, 2)
+  billingDayOfMonth Int     @default(10)
+  graceDays         Int     @default(4)
+  suspensionDays    Int     @default(12)
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  stores   CoffeeShopStore[]
+  invoices CoffeeBillingInvoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("coffee_client_accounts")
+}
+
+model CoffeeBillingInvoice {
+  id              String @id @default(cuid())
+  clientAccountId String
+
+  referenceMonth DateTime
+  amount         Decimal                  @db.Decimal(10, 2)
+  dueAt          DateTime
+  paidAt         DateTime?
+
+  reminderSentAt    DateTime?
+  finalNoticeSentAt DateTime?
+  status            CoffeeBillingInvoiceStatus @default(OPEN)
+  notes             String?
+
+  clientAccount CoffeeClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientAccountId, referenceMonth])
+  @@index([clientAccountId, status, dueAt])
+  @@map("coffee_billing_invoices")
+}
+
 model CoffeeShopStore {
-  id            String @id @default(cuid())
-  slug          String @unique
-  name          String
-  legalName     String?
-  currencyCode  String @default("BRL")
-  defaultLocale String @default("pt")
-  isActive      Boolean @default(true)
+  id              String @id @default(cuid())
+  clientAccountId String?
+  slug            String @unique
+  name            String
+  legalName       String?
+  currencyCode    String @default("BRL")
+  defaultLocale   String @default("pt")
+  isActive        Boolean @default(true)
 
-  sloganPt               String?
+  sloganPt                String?
+  sloganEn                String?
+  sloganEs                String?
   storefrontDescriptionPt String?
-  logoUrl                String?
-  brandPrimaryColor      String?
-  brandSecondaryColor    String?
-  brandAccentColor       String?
-  contactPhone           String?
-  contactWhatsapp        String?
+  storefrontDescriptionEn String?
+  storefrontDescriptionEs String?
+  logoUrl                 String?
+  brandPrimaryColor       String?
+  brandSecondaryColor     String?
+  brandAccentColor        String?
+  contactPhone            String?
+  contactWhatsapp         String?
 
+  clientAccount      CoffeeClientAccount?   @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   categories         CoffeeCatalogCategory[]
   products           CoffeeProduct[]
   orders             CoffeeOrder[]
@@ -558,6 +621,7 @@ model CoffeeShopStore {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([clientAccountId, isActive])
   @@map("coffee_shop_stores")
 }
 
@@ -587,7 +651,11 @@ model CoffeeCatalogCategory {
   area          CoffeeMenuArea
   slug          String
   namePt        String
+  nameEn        String?
+  nameEs        String?
   descriptionPt String?
+  descriptionEn String?
+  descriptionEs String?
   accentColor   String?
   sidebarImageUrl String?
   sortOrder     Int     @default(0)
@@ -612,10 +680,16 @@ model CoffeeProduct {
   slug          String
   sku           String?
   namePt        String
+  nameEn        String?
+  nameEs        String?
   descriptionPt String?
+  descriptionEn String?
+  descriptionEs String?
   imageUrl      String?
   artTone       String?
   highlightPt   String?
+  highlightEn   String?
+  highlightEs   String?
 
   basePrice     Decimal? @db.Decimal(10, 2)
   stockQuantity Int?

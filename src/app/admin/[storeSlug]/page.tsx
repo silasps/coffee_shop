@@ -357,32 +357,78 @@ export default async function StoreAdminPage({
                 <input name="legalName" className="field" defaultValue={store.legalName ?? ""} />
               </label>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                  Frase do cabeçalho
-                </span>
-                <input
-                  name="sloganPt"
-                  className="field"
-                  defaultValue={store.sloganPt ?? ""}
-                  maxLength={STOREFRONT_SLOGAN_MAX_LENGTH}
-                />
-                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                  Até {STOREFRONT_SLOGAN_MAX_LENGTH} caracteres para manter a leitura limpa no
-                  cabeçalho.
-                </p>
-              </label>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Frase do cabecalho PT
+                  </span>
+                  <input
+                    name="sloganPt"
+                    className="field"
+                    defaultValue={store.sloganPt ?? ""}
+                    maxLength={STOREFRONT_SLOGAN_MAX_LENGTH}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Header slogan EN
+                  </span>
+                  <input
+                    name="sloganEn"
+                    className="field"
+                    defaultValue={store.sloganEn ?? ""}
+                    maxLength={STOREFRONT_SLOGAN_MAX_LENGTH}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Frase del encabezado ES
+                  </span>
+                  <input
+                    name="sloganEs"
+                    className="field"
+                    defaultValue={store.sloganEs ?? ""}
+                    maxLength={STOREFRONT_SLOGAN_MAX_LENGTH}
+                  />
+                </label>
+              </div>
+              <p className="-mt-2 text-xs leading-5 text-[var(--muted)]">
+                Ate {STOREFRONT_SLOGAN_MAX_LENGTH} caracteres. Se ingles ou espanhol ficarem
+                vazios, o sistema gera uma traducao automatica baseada no texto em portugues.
+              </p>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                  Descrição pública
-                </span>
-                <textarea
-                  name="storefrontDescriptionPt"
-                  className="textarea min-h-28"
-                  defaultValue={store.storefrontDescriptionPt ?? ""}
-                />
-              </label>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Descricao publica PT
+                  </span>
+                  <textarea
+                    name="storefrontDescriptionPt"
+                    className="textarea min-h-28"
+                    defaultValue={store.storefrontDescriptionPt ?? ""}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Public description EN
+                  </span>
+                  <textarea
+                    name="storefrontDescriptionEn"
+                    className="textarea min-h-28"
+                    defaultValue={store.storefrontDescriptionEn ?? ""}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                    Descripcion publica ES
+                  </span>
+                  <textarea
+                    name="storefrontDescriptionEs"
+                    className="textarea min-h-28"
+                    defaultValue={store.storefrontDescriptionEs ?? ""}
+                  />
+                </label>
+              </div>
 
               <ImageUploadField
                 name="logoUrl"

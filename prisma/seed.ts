@@ -11,6 +11,7 @@ import {
   catalogProducts,
   COFFEE_SHOP_SLUG,
 } from "../src/lib/coffee/catalog-data";
+import { fillLocalizedText } from "../src/lib/coffee/content-i18n";
 
 const prisma = new PrismaClient();
 
@@ -31,8 +32,14 @@ async function main() {
       currencyCode: "BRL",
       defaultLocale: "pt",
       sloganPt: "De Tamandaré para o mundo.",
+      sloganEn: "From Tamandare to the world.",
+      sloganEs: "De Tamandare al mundo.",
       storefrontDescriptionPt:
         "Cardápio, operação e gestão financeira em uma base reutilizável para cafeterias.",
+      storefrontDescriptionEn:
+        "Menu, operations, and financial management in one reusable cafe foundation.",
+      storefrontDescriptionEs:
+        "Menu, operacion y gestion financiera en una base reutilizable para cafeterias.",
       logoUrl: "/brand/logo-dark.png",
       brandPrimaryColor: "#e36a2f",
       brandSecondaryColor: "#3d2217",
@@ -45,8 +52,14 @@ async function main() {
       currencyCode: "BRL",
       defaultLocale: "pt",
       sloganPt: "De Tamandaré para o mundo.",
+      sloganEn: "From Tamandare to the world.",
+      sloganEs: "De Tamandare al mundo.",
       storefrontDescriptionPt:
         "Cardápio, operação e gestão financeira em uma base reutilizável para cafeterias.",
+      storefrontDescriptionEn:
+        "Menu, operations, and financial management in one reusable cafe foundation.",
+      storefrontDescriptionEs:
+        "Menu, operacion y gestion financiera en una base reutilizable para cafeterias.",
       logoUrl: "/brand/logo-dark.png",
       brandPrimaryColor: "#e36a2f",
       brandSecondaryColor: "#3d2217",
@@ -68,13 +81,34 @@ async function main() {
   const categoriesBySlug = new Map<string, string>();
 
   for (const category of catalogCategories) {
+    const name = fillLocalizedText(
+      {
+        pt: category.namePt,
+        en: category.nameEn,
+        es: category.nameEs,
+      },
+      { kind: "category-name", slug: category.slug },
+    );
+    const description = fillLocalizedText(
+      {
+        pt: category.descriptionPt,
+        en: category.descriptionEn,
+        es: category.descriptionEs,
+      },
+      { kind: "category-description", slug: category.slug },
+    );
+
     const created = await prisma.coffeeCatalogCategory.create({
       data: {
         storeId: store.id,
         slug: category.slug,
         area: areaMap[category.area],
-        namePt: category.namePt,
-        descriptionPt: category.descriptionPt,
+        namePt: name.pt ?? category.namePt,
+        nameEn: name.en,
+        nameEs: name.es,
+        descriptionPt: description.pt,
+        descriptionEn: description.en,
+        descriptionEs: description.es,
         accentColor: category.accentColor,
         sidebarImageUrl:
           catalogProducts.find((product) => product.categorySlug === category.slug)?.imageUrl ?? null,
@@ -86,21 +120,54 @@ async function main() {
   }
 
   await prisma.coffeeProduct.createMany({
-    data: catalogProducts.map((product, index) => ({
-      storeId: store.id,
-      categoryId: categoriesBySlug.get(product.categorySlug) as string,
-      slug: product.slug,
-      namePt: product.namePt,
-      descriptionPt: product.descriptionPt,
-      basePrice: product.price,
-      stockQuantity: product.stockQuantity ?? 16,
-      isAvailable: product.available ?? product.price !== null,
-      isFeatured: product.featured ?? false,
-      prepMinutes: product.prepMinutes ?? 8,
-      artTone: product.artTone ?? "mocha",
-      highlightPt: product.highlightPt,
-      sortOrder: index + 1,
-    })),
+    data: catalogProducts.map((product, index) => {
+      const name = fillLocalizedText(
+        {
+          pt: product.namePt,
+          en: product.nameEn,
+          es: product.nameEs,
+        },
+        { kind: "product-name", slug: product.slug },
+      );
+      const description = fillLocalizedText(
+        {
+          pt: product.descriptionPt,
+          en: product.descriptionEn,
+          es: product.descriptionEs,
+        },
+        { kind: "product-description", slug: product.slug },
+      );
+      const highlight = fillLocalizedText(
+        {
+          pt: product.highlightPt,
+          en: product.highlightEn,
+          es: product.highlightEs,
+        },
+        { kind: "product-highlight", slug: product.slug },
+      );
+
+      return {
+        storeId: store.id,
+        categoryId: categoriesBySlug.get(product.categorySlug) as string,
+        slug: product.slug,
+        namePt: name.pt ?? product.namePt,
+        nameEn: name.en,
+        nameEs: name.es,
+        descriptionPt: description.pt,
+        descriptionEn: description.en,
+        descriptionEs: description.es,
+        basePrice: product.price,
+        stockQuantity: product.stockQuantity ?? 16,
+        isAvailable: product.available ?? product.price !== null,
+        isFeatured: product.featured ?? false,
+        prepMinutes: product.prepMinutes ?? 8,
+        artTone: product.artTone ?? "mocha",
+        highlightPt: highlight.pt,
+        highlightEn: highlight.en,
+        highlightEs: highlight.es,
+        sortOrder: index + 1,
+      };
+    }),
   });
 
   await prisma.coffeeTeamMember.createMany({

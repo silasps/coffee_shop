@@ -30,7 +30,7 @@ const modalTitles: Record<Locale, string> = {
 const addMoreLabels: Record<Locale, string> = {
   pt: "Adicionar mais itens",
   en: "Add more items",
-  es: "Agregar más items",
+  es: "Agregar más productos",
 };
 
 const removeLabels: Record<Locale, string> = {
@@ -42,7 +42,7 @@ const removeLabels: Record<Locale, string> = {
 const itemLabels: Record<Locale, string> = {
   pt: "itens",
   en: "items",
-  es: "items",
+  es: "productos",
 };
 
 export function CartDrawer({

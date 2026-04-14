@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { ProductArt } from "@/components/product-art";
 import { StorefrontShell } from "@/components/storefront-shell";
-import { formatMoney, getDictionary, isValidLocale } from "@/lib/coffee/i18n";
+import {
+  formatMoney,
+  getDictionary,
+  isValidLocale,
+} from "@/lib/coffee/i18n";
 import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import { getProductBySlug, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
@@ -56,7 +60,7 @@ export default async function ProductPage({
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Preço
+                {dictionary.priceLabel}
               </p>
               <p className="mt-3 text-3xl font-semibold text-[var(--espresso)]">
                 {formatMoney(product.price, typedLocale)}
@@ -64,10 +68,10 @@ export default async function ProductPage({
             </div>
             <div className="rounded-[22px] border border-[var(--line)] bg-white/72 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                Disponibilidade
+                {dictionary.availabilityLabel}
               </p>
               <p className="mt-3 text-lg font-semibold text-[var(--espresso)]">
-                {product.isAvailable ? "Liberado para pedido" : dictionary.unavailable}
+                {product.isAvailable ? dictionary.availableForOrder : dictionary.unavailable}
               </p>
             </div>
           </div>
@@ -76,7 +80,7 @@ export default async function ProductPage({
             <AddToCartButton
               locale={typedLocale}
               slug={product.slug}
-              name={product.originalName}
+              name={product.name}
               price={product.price}
               area={product.area}
               disabled={!product.isAvailable}

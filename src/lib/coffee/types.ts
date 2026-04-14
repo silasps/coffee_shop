@@ -2,17 +2,35 @@ export const locales = ["pt", "en", "es"] as const;
 
 export type Locale = (typeof locales)[number];
 
+export type LocalizedText = {
+  pt?: string | null;
+  en?: string | null;
+  es?: string | null;
+};
+
 export const STOREFRONT_SLOGAN_MAX_LENGTH = 44;
 
 export const menuAreas = ["foods", "hot-drinks", "cold-drinks"] as const;
 
 export type MenuAreaSlug = (typeof menuAreas)[number];
+export type ClientAccessStatus = "ACTIVE" | "WARNING" | "OVERDUE" | "BLOCKED";
+export type BillingInvoiceViewStatus =
+  | "UPCOMING"
+  | "OPEN"
+  | "OVERDUE"
+  | "BLOCKED"
+  | "PAID"
+  | "CANCELED";
 
 export type CatalogCategorySeed = {
   slug: string;
   area: MenuAreaSlug;
   namePt: string;
+  nameEn?: string;
+  nameEs?: string;
   descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   accentColor?: string;
   sidebarImageUrl?: string | null;
   sortOrder: number;
@@ -22,7 +40,11 @@ export type CatalogProductSeed = {
   slug: string;
   categorySlug: string;
   namePt: string;
+  nameEn?: string;
+  nameEs?: string;
   descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   imageUrl?: string | null;
   price: number | null;
   available?: boolean;
@@ -31,6 +53,8 @@ export type CatalogProductSeed = {
   prepMinutes?: number | null;
   artTone?: "amber" | "mocha" | "forest" | "berry" | "cream";
   highlightPt?: string;
+  highlightEn?: string;
+  highlightEs?: string;
 };
 
 export type PublicCategory = CatalogCategorySeed & {
@@ -48,7 +72,11 @@ export type StorefrontConfig = {
   currencyCode: string;
   isActive: boolean;
   sloganPt?: string | null;
+  sloganEn?: string | null;
+  sloganEs?: string | null;
   storefrontDescriptionPt?: string | null;
+  storefrontDescriptionEn?: string | null;
+  storefrontDescriptionEs?: string | null;
   logoUrl?: string | null;
   brandPrimaryColor?: string | null;
   brandSecondaryColor?: string | null;
@@ -84,7 +112,11 @@ export type CatalogDashboardProduct = {
   id: string;
   slug: string;
   namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
   descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
   categorySlug: string;
   categoryNamePt: string;
   price: number | null;
@@ -93,6 +125,8 @@ export type CatalogDashboardProduct = {
   isFeatured: boolean;
   imageUrl: string | null;
   highlightPt: string | null;
+  highlightEn: string | null;
+  highlightEs: string | null;
   sortOrder: number;
 };
 
@@ -101,7 +135,11 @@ export type CatalogDashboardCategory = {
   slug: string;
   area: MenuAreaSlug;
   namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
   descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
   accentColor?: string | null;
   sidebarImageUrl?: string | null;
   sortOrder: number;
@@ -169,6 +207,78 @@ export type ManagedStoreSummary = {
   financeEntryCount: number;
   publicUrl: string;
   updatedAt: string;
+  clientAccountId?: string | null;
+  clientAccountName?: string | null;
+  clientAccountSlug?: string | null;
+  clientAccessStatus: ClientAccessStatus;
+  clientAccessLabel: string;
+};
+
+export type BillingInvoiceSummary = {
+  id: string;
+  clientAccountId: string;
+  clientName: string;
+  clientSlug: string;
+  referenceLabel: string;
+  referenceMonth: string;
+  amount: number;
+  dueAt: string;
+  paidAt?: string | null;
+  reminderSentAt?: string | null;
+  finalNoticeSentAt?: string | null;
+  status: BillingInvoiceViewStatus;
+  statusLabel: string;
+  daysUntilDue?: number | null;
+  daysOverdue?: number | null;
+};
+
+export type PlatformClientSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  legalName?: string | null;
+  ownerName?: string | null;
+  billingEmail?: string | null;
+  phone?: string | null;
+  monthlyFee: number;
+  billingDayOfMonth: number;
+  graceDays: number;
+  suspensionDays: number;
+  notes?: string | null;
+  isActive: boolean;
+  accessStatus: ClientAccessStatus;
+  accessLabel: string;
+  storeCount: number;
+  activeStoreCount: number;
+  outstandingInvoiceCount: number;
+  outstandingAmount: number;
+  nextDueAt?: string | null;
+  lastPaymentAt?: string | null;
+  alerts: string[];
+  stores: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    isActive: boolean;
+  }>;
+};
+
+export type PlatformDashboardStats = {
+  clientCount: number;
+  storeCount: number;
+  activeStoreCount: number;
+  blockedClientCount: number;
+  warningClientCount: number;
+  monthlyRecurringRevenue: number;
+  outstandingRevenue: number;
+};
+
+export type PlatformAdminDashboard = {
+  isLive: boolean;
+  stats: PlatformDashboardStats;
+  clients: PlatformClientSummary[];
+  stores: ManagedStoreSummary[];
+  invoices: BillingInvoiceSummary[];
 };
 
 export type CartItem = {

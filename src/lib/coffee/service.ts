@@ -1,4 +1,5 @@
 import {
+  CoffeeBillingInvoiceStatus,
   CoffeeCatalogCategory,
   CoffeeFinanceCategory,
   CoffeeFinanceDirection,
@@ -19,14 +20,21 @@ import {
   demoInventoryMovements,
   demoOrders,
 } from "@/lib/coffee/catalog-data";
-import { getAreaName, translateCategory } from "@/lib/coffee/i18n";
+import {
+  fillLocalizedText,
+  resolveCategoryCopy,
+  resolveProductCopy,
+} from "@/lib/coffee/content-i18n";
+import { getAreaName } from "@/lib/coffee/i18n";
 import { buildStorePublicUrl, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import { prisma } from "@/lib/prisma";
 import { STOREFRONT_SLOGAN_MAX_LENGTH } from "@/lib/coffee/types";
 import type {
   CatalogDashboardCategory,
   CatalogDashboardProduct,
+  BillingInvoiceSummary,
   CheckoutPayload,
+  ClientAccessStatus,
   FinanceEntryRecord,
   InventoryMovementRecord,
   Locale,
@@ -34,6 +42,8 @@ import type {
   MenuAreaSlug,
   OperationsDashboard,
   OrderSnapshot,
+  PlatformAdminDashboard,
+  PlatformClientSummary,
   PublicAreaData,
   PublicCategory,
   PublicProduct,
@@ -56,6 +66,19 @@ const reverseAreaMap: Record<CoffeeMenuArea, MenuAreaSlug> = {
 const shouldSkipDatabase = process.env.COFFEE_SHOP_SKIP_DB === "1";
 const modelFieldCache = new Map<string, Set<string>>();
 
+function formatErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  return typeof error === "string" ? error : "Erro desconhecido.";
+}
+
+function reportFallback(scope: string, storeSlug: string, error?: unknown) {
+  const suffix = error ? ` Motivo: ${formatErrorMessage(error)}` : "";
+  console.warn(`[coffee] ${scope} para "${storeSlug}". Usando dados de fallback.${suffix}`);
+}
+
 const defaultStoreSeed = {
   slug: DEFAULT_STORE_SLUG,
   name: "Cafeteria AT",
@@ -63,13 +86,60 @@ const defaultStoreSeed = {
   currencyCode: "BRL",
   defaultLocale: "pt",
   sloganPt: "De Tamandaré para o mundo.",
+  sloganEn: "From Tamandare to the world.",
+  sloganEs: "De Tamandare al mundo.",
   storefrontDescriptionPt:
     "Cardápio digital, pedidos e operação de cafeteria em uma mesma base reutilizável.",
+  storefrontDescriptionEn:
+    "Digital menu, ordering, and cafe operations in one reusable foundation.",
+  storefrontDescriptionEs:
+    "Menu digital, pedidos y operacion de cafeteria en una misma base reutilizable.",
   brandPrimaryColor: "#e36a2f",
   brandSecondaryColor: "#3d2217",
   brandAccentColor: "#f0c067",
   logoUrl: "/brand/logo-dark.png",
 } as const;
+
+const defaultClientSeed = {
+  slug: "conta-principal",
+  name: "Conta principal",
+  legalName: "Conta principal da plataforma",
+  ownerName: "Equipe AT",
+  billingEmail: "financeiro@cafeteria-at.local",
+  monthlyFee: 150,
+  billingDayOfMonth: 10,
+  graceDays: 4,
+  suspensionDays: 12,
+  notes:
+    "Conta criada automaticamente para sustentar a gestão multi-cafeteria enquanto novos clientes são cadastrados.",
+} as const;
+
+type BillingRules = {
+  isActive: boolean;
+  billingDayOfMonth: number;
+  graceDays: number;
+  suspensionDays: number;
+};
+
+type BillingInvoiceSource = {
+  id: string;
+  clientAccountId: string;
+  referenceMonth: Date;
+  amount: Prisma.Decimal | number;
+  dueAt: Date;
+  paidAt: Date | null;
+  reminderSentAt: Date | null;
+  finalNoticeSentAt: Date | null;
+  status: CoffeeBillingInvoiceStatus;
+  clientAccount: {
+    name: string;
+    slug: string;
+    isActive: boolean;
+    billingDayOfMonth: number;
+    graceDays: number;
+    suspensionDays: number;
+  };
+};
 
 const checkoutSchema = z.object({
   customerName: z.string().min(2),
@@ -131,6 +201,139 @@ function cleanOptionalBoundedString(
   return trimmed;
 }
 
+function buildStoreLocalizedFields(input: {
+  sloganPt?: string | null;
+  sloganEn?: string | null;
+  sloganEs?: string | null;
+  storefrontDescriptionPt?: string | null;
+  storefrontDescriptionEn?: string | null;
+  storefrontDescriptionEs?: string | null;
+}) {
+  const slogan = fillLocalizedText(
+    {
+      pt: cleanOptionalBoundedString(
+        input.sloganPt,
+        "A frase do cabeçalho",
+        STOREFRONT_SLOGAN_MAX_LENGTH,
+      ),
+      en: cleanOptionalBoundedString(
+        input.sloganEn,
+        "The header slogan",
+        STOREFRONT_SLOGAN_MAX_LENGTH,
+      ),
+      es: cleanOptionalBoundedString(
+        input.sloganEs,
+        "La frase del encabezado",
+        STOREFRONT_SLOGAN_MAX_LENGTH,
+      ),
+    },
+    { kind: "store-slogan" },
+  );
+  const description = fillLocalizedText(
+    {
+      pt: cleanOptionalString(input.storefrontDescriptionPt),
+      en: cleanOptionalString(input.storefrontDescriptionEn),
+      es: cleanOptionalString(input.storefrontDescriptionEs),
+    },
+    { kind: "store-description" },
+  );
+
+  return {
+    sloganPt: slogan.pt,
+    sloganEn: slogan.en,
+    sloganEs: slogan.es,
+    storefrontDescriptionPt: description.pt,
+    storefrontDescriptionEn: description.en,
+    storefrontDescriptionEs: description.es,
+  };
+}
+
+function buildCategoryLocalizedFields(input: {
+  slug: string;
+  namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
+  descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
+}) {
+  const name = fillLocalizedText(
+    {
+      pt: input.namePt.trim(),
+      en: cleanOptionalString(input.nameEn),
+      es: cleanOptionalString(input.nameEs),
+    },
+    { kind: "category-name", slug: input.slug },
+  );
+  const description = fillLocalizedText(
+    {
+      pt: cleanOptionalString(input.descriptionPt),
+      en: cleanOptionalString(input.descriptionEn),
+      es: cleanOptionalString(input.descriptionEs),
+    },
+    { kind: "category-description", slug: input.slug },
+  );
+
+  return {
+    namePt: name.pt ?? input.namePt.trim(),
+    nameEn: name.en,
+    nameEs: name.es,
+    descriptionPt: description.pt,
+    descriptionEn: description.en,
+    descriptionEs: description.es,
+  };
+}
+
+function buildProductLocalizedFields(input: {
+  slug: string;
+  namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
+  descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
+  highlightPt?: string | null;
+  highlightEn?: string | null;
+  highlightEs?: string | null;
+}) {
+  const name = fillLocalizedText(
+    {
+      pt: input.namePt.trim(),
+      en: cleanOptionalString(input.nameEn),
+      es: cleanOptionalString(input.nameEs),
+    },
+    { kind: "product-name", slug: input.slug },
+  );
+  const description = fillLocalizedText(
+    {
+      pt: cleanOptionalString(input.descriptionPt),
+      en: cleanOptionalString(input.descriptionEn),
+      es: cleanOptionalString(input.descriptionEs),
+    },
+    { kind: "product-description", slug: input.slug },
+  );
+  const highlight = fillLocalizedText(
+    {
+      pt: cleanOptionalString(input.highlightPt),
+      en: cleanOptionalString(input.highlightEn),
+      es: cleanOptionalString(input.highlightEs),
+    },
+    { kind: "product-highlight", slug: input.slug },
+  );
+
+  return {
+    namePt: name.pt ?? input.namePt.trim(),
+    nameEn: name.en,
+    nameEs: name.es,
+    descriptionPt: description.pt,
+    descriptionEn: description.en,
+    descriptionEs: description.es,
+    highlightPt: highlight.pt,
+    highlightEn: highlight.en,
+    highlightEs: highlight.es,
+  };
+}
+
 function getModelFieldSet(modelName: string) {
   const cached = modelFieldCache.get(modelName);
 
@@ -180,6 +383,232 @@ function titleFromSlug(slug: string) {
     .join(" ");
 }
 
+function startOfMonth(referenceDate = new Date()) {
+  return new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1, 12, 0, 0, 0);
+}
+
+function clampDayOfMonth(referenceMonth: Date, dayOfMonth: number) {
+  const daysInMonth = new Date(
+    referenceMonth.getFullYear(),
+    referenceMonth.getMonth() + 1,
+    0,
+  ).getDate();
+
+  return Math.min(Math.max(1, Math.round(dayOfMonth || 1)), daysInMonth);
+}
+
+function buildDueDate(referenceMonth: Date, dayOfMonth: number) {
+  return new Date(
+    referenceMonth.getFullYear(),
+    referenceMonth.getMonth(),
+    clampDayOfMonth(referenceMonth, dayOfMonth),
+    12,
+    0,
+    0,
+    0,
+  );
+}
+
+function startOfDay(referenceDate: Date) {
+  return new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+}
+
+function differenceInCalendarDays(left: Date, right: Date) {
+  const leftDay = startOfDay(left);
+  const rightDay = startOfDay(right);
+  return Math.round((leftDay.getTime() - rightDay.getTime()) / 86_400_000);
+}
+
+function formatBillingReference(referenceMonth: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+  }).format(referenceMonth);
+}
+
+function formatShortDate(referenceDate: Date | null | undefined) {
+  if (!referenceDate) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("pt-BR").format(referenceDate);
+}
+
+function getBillingRules(input: BillingRules) {
+  return {
+    isActive: input.isActive,
+    billingDayOfMonth: Math.max(1, Math.round(input.billingDayOfMonth || 10)),
+    graceDays: Math.max(0, Math.round(input.graceDays || 0)),
+    suspensionDays: Math.max(
+      Math.max(1, Math.round(input.graceDays || 0) + 1),
+      Math.round(input.suspensionDays || 1),
+    ),
+  };
+}
+
+function getInvoiceViewStatus(
+  invoice: Pick<
+    BillingInvoiceSource,
+    "dueAt" | "paidAt" | "status" | "clientAccount"
+  >,
+) {
+  if (invoice.status === CoffeeBillingInvoiceStatus.CANCELED) {
+    return {
+      status: "CANCELED" as const,
+      statusLabel: "Cancelada",
+      daysUntilDue: null,
+      daysOverdue: null,
+    };
+  }
+
+  if (invoice.paidAt || invoice.status === CoffeeBillingInvoiceStatus.PAID) {
+    return {
+      status: "PAID" as const,
+      statusLabel: "Paga",
+      daysUntilDue: null,
+      daysOverdue: null,
+    };
+  }
+
+  const rules = getBillingRules(invoice.clientAccount);
+  const today = new Date();
+  const dayDiff = differenceInCalendarDays(invoice.dueAt, today);
+
+  if (!rules.isActive) {
+    return {
+      status: "BLOCKED" as const,
+      statusLabel: "Conta pausada",
+      daysUntilDue: dayDiff > 0 ? dayDiff : null,
+      daysOverdue: dayDiff < 0 ? Math.abs(dayDiff) : null,
+    };
+  }
+
+  if (dayDiff > 3) {
+    return {
+      status: "OPEN" as const,
+      statusLabel: "Em aberto",
+      daysUntilDue: dayDiff,
+      daysOverdue: null,
+    };
+  }
+
+  if (dayDiff > 0) {
+    return {
+      status: "UPCOMING" as const,
+      statusLabel: `Vence em ${dayDiff} dia${dayDiff === 1 ? "" : "s"}`,
+      daysUntilDue: dayDiff,
+      daysOverdue: null,
+    };
+  }
+
+  if (dayDiff === 0) {
+    return {
+      status: "OPEN" as const,
+      statusLabel: "Vence hoje",
+      daysUntilDue: 0,
+      daysOverdue: null,
+    };
+  }
+
+  const daysOverdue = Math.abs(dayDiff);
+
+  if (daysOverdue > rules.suspensionDays) {
+    return {
+      status: "BLOCKED" as const,
+      statusLabel: "Bloqueio automático",
+      daysUntilDue: null,
+      daysOverdue,
+    };
+  }
+
+  if (daysOverdue > rules.graceDays) {
+    return {
+      status: "OVERDUE" as const,
+      statusLabel: "Em atraso",
+      daysUntilDue: null,
+      daysOverdue,
+    };
+  }
+
+  return {
+    status: "OPEN" as const,
+    statusLabel: `Em aberto (${daysOverdue} dia${daysOverdue === 1 ? "" : "s"} de atraso)`,
+    daysUntilDue: null,
+    daysOverdue,
+  };
+}
+
+function mapBillingInvoiceSummary(invoice: BillingInvoiceSource): BillingInvoiceSummary {
+  const view = getInvoiceViewStatus(invoice);
+
+  return {
+    id: invoice.id,
+    clientAccountId: invoice.clientAccountId,
+    clientName: invoice.clientAccount.name,
+    clientSlug: invoice.clientAccount.slug,
+    referenceLabel: formatBillingReference(invoice.referenceMonth),
+    referenceMonth: invoice.referenceMonth.toISOString(),
+    amount: moneyToNumber(invoice.amount) ?? 0,
+    dueAt: invoice.dueAt.toISOString(),
+    paidAt: invoice.paidAt?.toISOString() ?? null,
+    reminderSentAt: invoice.reminderSentAt?.toISOString() ?? null,
+    finalNoticeSentAt: invoice.finalNoticeSentAt?.toISOString() ?? null,
+    status: view.status,
+    statusLabel: view.statusLabel,
+    daysUntilDue: view.daysUntilDue,
+    daysOverdue: view.daysOverdue,
+  };
+}
+
+function buildClientAlerts(client: PlatformClientSummary, latestInvoice: BillingInvoiceSummary | null) {
+  const alerts: string[] = [];
+
+  if (!client.isActive) {
+    alerts.push("Conta pausada manualmente na plataforma.");
+  }
+
+  if (!latestInvoice) {
+    alerts.push("Nenhuma cobrança aberta no momento.");
+    return alerts;
+  }
+
+  if (latestInvoice.status === "UPCOMING" && latestInvoice.daysUntilDue !== null) {
+    alerts.push(`Próxima cobrança vence em ${latestInvoice.daysUntilDue} dia(s).`);
+  }
+
+  if (latestInvoice.status === "OPEN" && latestInvoice.daysOverdue) {
+    alerts.push(`Cobrança em aberto há ${latestInvoice.daysOverdue} dia(s).`);
+  }
+
+  if (latestInvoice.status === "OVERDUE" && latestInvoice.daysOverdue) {
+    alerts.push(`Cliente com ${latestInvoice.daysOverdue} dia(s) de atraso.`);
+  }
+
+  if (latestInvoice.status === "BLOCKED" && latestInvoice.daysOverdue) {
+    alerts.push(`Acesso sujeito a bloqueio por ${latestInvoice.daysOverdue} dia(s) de atraso.`);
+  }
+
+  if (latestInvoice.reminderSentAt) {
+    alerts.push(`Lembrete registrado em ${formatShortDate(new Date(latestInvoice.reminderSentAt))}.`);
+  }
+
+  if (latestInvoice.finalNoticeSentAt) {
+    alerts.push(
+      `Aviso final registrado em ${formatShortDate(new Date(latestInvoice.finalNoticeSentAt))}.`,
+    );
+  }
+
+  return alerts;
+}
+
 function buildFallbackStorefront(storeSlug = DEFAULT_STORE_SLUG): StorefrontConfig {
   const isDefaultStore = storeSlug === DEFAULT_STORE_SLUG;
 
@@ -192,7 +621,11 @@ function buildFallbackStorefront(storeSlug = DEFAULT_STORE_SLUG): StorefrontConf
     currencyCode: "BRL",
     isActive: true,
     sloganPt: defaultStoreSeed.sloganPt,
+    sloganEn: defaultStoreSeed.sloganEn,
+    sloganEs: defaultStoreSeed.sloganEs,
     storefrontDescriptionPt: defaultStoreSeed.storefrontDescriptionPt,
+    storefrontDescriptionEn: defaultStoreSeed.storefrontDescriptionEn,
+    storefrontDescriptionEs: defaultStoreSeed.storefrontDescriptionEs,
     logoUrl: defaultStoreSeed.logoUrl,
     brandPrimaryColor: defaultStoreSeed.brandPrimaryColor,
     brandSecondaryColor: defaultStoreSeed.brandSecondaryColor,
@@ -212,7 +645,11 @@ function mapStorefront(store: {
   currencyCode: string;
   isActive: boolean;
   sloganPt: string | null;
+  sloganEn: string | null;
+  sloganEs: string | null;
   storefrontDescriptionPt: string | null;
+  storefrontDescriptionEn: string | null;
+  storefrontDescriptionEs: string | null;
   logoUrl: string | null;
   brandPrimaryColor: string | null;
   brandSecondaryColor: string | null;
@@ -231,7 +668,11 @@ function mapStorefront(store: {
     currencyCode: store.currencyCode,
     isActive: store.isActive,
     sloganPt: store.sloganPt,
+    sloganEn: store.sloganEn,
+    sloganEs: store.sloganEs,
     storefrontDescriptionPt: store.storefrontDescriptionPt,
+    storefrontDescriptionEn: store.storefrontDescriptionEn,
+    storefrontDescriptionEs: store.storefrontDescriptionEs,
     logoUrl: store.logoUrl,
     brandPrimaryColor: store.brandPrimaryColor,
     brandSecondaryColor: store.brandSecondaryColor,
@@ -252,31 +693,29 @@ function buildFallbackCatalog(locale: Locale): PublicAreaData[] {
           return null;
         }
 
-        const translations = translateCategory(
-          category.slug,
-          locale,
-          category.namePt,
-          category.descriptionPt,
-        );
-
         const products: PublicProduct[] = catalogProducts
           .filter((product) => product.categorySlug === categorySlug)
-          .map((product) => ({
-            id: product.slug,
-            slug: product.slug,
-            categorySlug,
-            area: category.area,
-            name: product.namePt,
-            description: product.descriptionPt ?? "",
-            originalName: product.namePt,
-            imageUrl: product.imageUrl ?? null,
-            price: product.price,
-            isAvailable: product.available ?? product.price !== null,
-            stockQuantity: product.stockQuantity ?? 12,
-            prepMinutes: product.prepMinutes ?? 8,
-            artTone: product.artTone ?? "mocha",
-            highlight: product.highlightPt ?? null,
-          }));
+          .map((product) => {
+            const translations = resolveProductCopy(locale, product);
+
+            return {
+              id: product.slug,
+              slug: product.slug,
+              categorySlug,
+              area: category.area,
+              name: translations.name,
+              description: translations.description,
+              originalName: product.namePt,
+              imageUrl: product.imageUrl ?? null,
+              price: product.price,
+              isAvailable: product.available ?? product.price !== null,
+              stockQuantity: product.stockQuantity ?? 12,
+              prepMinutes: product.prepMinutes ?? 8,
+              artTone: product.artTone ?? "mocha",
+              highlight: translations.highlight,
+            };
+          });
+        const translations = resolveCategoryCopy(locale, category);
 
         return {
           ...category,
@@ -309,16 +748,27 @@ async function seedStoreCategories(storeId: string, tx: Prisma.TransactionClient
 
   await tx.coffeeCatalogCategory.createMany({
     skipDuplicates: true,
-    data: catalogCategories.map((category) => ({
-      storeId,
-      slug: category.slug,
-      area: areaMap[category.area],
-      namePt: category.namePt,
-      descriptionPt: category.descriptionPt,
-      accentColor: category.accentColor ?? null,
-      sidebarImageUrl: category.sidebarImageUrl ?? null,
-      sortOrder: category.sortOrder,
-    })),
+    data: catalogCategories.map((category) => {
+      const localized = buildCategoryLocalizedFields({
+        slug: category.slug,
+        namePt: category.namePt,
+        nameEn: category.nameEn,
+        nameEs: category.nameEs,
+        descriptionPt: category.descriptionPt,
+        descriptionEn: category.descriptionEn,
+        descriptionEs: category.descriptionEs,
+      });
+
+      return {
+        storeId,
+        slug: category.slug,
+        area: areaMap[category.area],
+        ...localized,
+        accentColor: category.accentColor ?? null,
+        sidebarImageUrl: category.sidebarImageUrl ?? null,
+        sortOrder: category.sortOrder,
+      };
+    }),
   });
 }
 
@@ -358,17 +808,27 @@ async function seedStoreProducts(storeId: string, tx: Prisma.TransactionClient) 
 
       const sortOrder = (sortOrderByCategory.get(product.categorySlug) ?? 0) + 1;
       sortOrderByCategory.set(product.categorySlug, sortOrder);
+      const localized = buildProductLocalizedFields({
+        slug: product.slug,
+        namePt: product.namePt,
+        nameEn: product.nameEn,
+        nameEs: product.nameEs,
+        descriptionPt: product.descriptionPt,
+        descriptionEn: product.descriptionEn,
+        descriptionEs: product.descriptionEs,
+        highlightPt: product.highlightPt,
+        highlightEn: product.highlightEn,
+        highlightEs: product.highlightEs,
+      });
 
       return [
         {
           storeId,
           categoryId: category.id,
           slug: product.slug,
-          namePt: product.namePt,
-          descriptionPt: product.descriptionPt ?? null,
+          ...localized,
           imageUrl: product.imageUrl ?? null,
           artTone: product.artTone ?? getToneForCategory(category.area),
-          highlightPt: product.highlightPt ?? null,
           basePrice: toNullableNumber(product.price),
           stockQuantity:
             typeof product.stockQuantity === "number"
@@ -387,16 +847,100 @@ async function seedStoreProducts(storeId: string, tx: Prisma.TransactionClient) 
   });
 }
 
+async function ensureDefaultClientAccount(tx: Prisma.TransactionClient) {
+  const createData = filterModelWriteData("CoffeeClientAccount", {
+    slug: defaultClientSeed.slug,
+    name: defaultClientSeed.name,
+    legalName: defaultClientSeed.legalName,
+    ownerName: defaultClientSeed.ownerName,
+    billingEmail: defaultClientSeed.billingEmail,
+    monthlyFee: defaultClientSeed.monthlyFee,
+    billingDayOfMonth: defaultClientSeed.billingDayOfMonth,
+    graceDays: defaultClientSeed.graceDays,
+    suspensionDays: defaultClientSeed.suspensionDays,
+    notes: defaultClientSeed.notes,
+  }) as Prisma.CoffeeClientAccountUncheckedCreateInput;
+
+  return tx.coffeeClientAccount.upsert({
+    where: { slug: defaultClientSeed.slug },
+    update: {},
+    create: createData,
+  });
+}
+
+async function ensureMonthlyBillingInvoice(
+  tx: Prisma.TransactionClient,
+  clientAccount: {
+    id: string;
+    monthlyFee: Prisma.Decimal | number;
+    billingDayOfMonth: number;
+  },
+  referenceDate = new Date(),
+) {
+  const referenceMonth = startOfMonth(referenceDate);
+
+  return tx.coffeeBillingInvoice.upsert({
+    where: {
+      clientAccountId_referenceMonth: {
+        clientAccountId: clientAccount.id,
+        referenceMonth,
+      },
+    },
+    update: {},
+    create: {
+      clientAccountId: clientAccount.id,
+      referenceMonth,
+      amount: moneyToNumber(clientAccount.monthlyFee) ?? defaultClientSeed.monthlyFee,
+      dueAt: buildDueDate(referenceMonth, clientAccount.billingDayOfMonth),
+      status: CoffeeBillingInvoiceStatus.OPEN,
+    },
+  });
+}
+
+async function ensureBillingStructure(referenceDate = new Date()) {
+  return prisma.$transaction(async (tx) => {
+    const defaultClient = await ensureDefaultClientAccount(tx);
+
+    await tx.coffeeShopStore.updateMany({
+      where: { clientAccountId: null },
+      data: { clientAccountId: defaultClient.id },
+    });
+
+    const clientAccounts = await tx.coffeeClientAccount.findMany({
+      select: {
+        id: true,
+        monthlyFee: true,
+        billingDayOfMonth: true,
+      },
+    });
+
+    for (const clientAccount of clientAccounts) {
+      await ensureMonthlyBillingInvoice(tx, clientAccount, referenceDate);
+    }
+
+    return defaultClient;
+  });
+}
+
 async function ensureDefaultStoreRecord() {
   return prisma.$transaction(async (tx) => {
+    const defaultClient = await ensureDefaultClientAccount(tx);
+    const localizedStoreContent = buildStoreLocalizedFields({
+      sloganPt: defaultStoreSeed.sloganPt,
+      sloganEn: defaultStoreSeed.sloganEn,
+      sloganEs: defaultStoreSeed.sloganEs,
+      storefrontDescriptionPt: defaultStoreSeed.storefrontDescriptionPt,
+      storefrontDescriptionEn: defaultStoreSeed.storefrontDescriptionEn,
+      storefrontDescriptionEs: defaultStoreSeed.storefrontDescriptionEs,
+    });
     const createData = filterModelWriteData("CoffeeShopStore", {
+      clientAccountId: defaultClient.id,
       slug: defaultStoreSeed.slug,
       name: defaultStoreSeed.name,
       legalName: defaultStoreSeed.legalName,
       currencyCode: defaultStoreSeed.currencyCode,
       defaultLocale: defaultStoreSeed.defaultLocale,
-      sloganPt: defaultStoreSeed.sloganPt,
-      storefrontDescriptionPt: defaultStoreSeed.storefrontDescriptionPt,
+      ...localizedStoreContent,
       logoUrl: defaultStoreSeed.logoUrl,
       brandPrimaryColor: defaultStoreSeed.brandPrimaryColor,
       brandSecondaryColor: defaultStoreSeed.brandSecondaryColor,
@@ -405,10 +949,17 @@ async function ensureDefaultStoreRecord() {
 
     const store = await tx.coffeeShopStore.upsert({
       where: { slug: DEFAULT_STORE_SLUG },
-      update: {},
+      update: filterModelWriteData("CoffeeShopStore", {
+        clientAccountId: defaultClient.id,
+      }) as Prisma.CoffeeShopStoreUncheckedUpdateInput,
       create: createData,
     });
 
+    await ensureMonthlyBillingInvoice(tx, {
+      id: defaultClient.id,
+      monthlyFee: defaultClient.monthlyFee,
+      billingDayOfMonth: defaultClient.billingDayOfMonth,
+    });
     await seedStoreCategories(store.id, tx);
     await seedStoreProducts(store.id, tx);
 
@@ -447,7 +998,11 @@ function mapCategory(
       id: string;
       slug: string;
       namePt: string;
+      nameEn: string | null;
+      nameEs: string | null;
       descriptionPt: string | null;
+      descriptionEn: string | null;
+      descriptionEs: string | null;
       imageUrl: string | null;
       basePrice: Prisma.Decimal | null;
       isAvailable: boolean;
@@ -455,22 +1010,23 @@ function mapCategory(
       prepMinutes: number | null;
       artTone: string | null;
       highlightPt: string | null;
+      highlightEn: string | null;
+      highlightEs: string | null;
     }>;
   },
 ): PublicCategory {
   const area = reverseAreaMap[category.area];
-  const translations = translateCategory(
-    category.slug,
-    locale,
-    category.namePt,
-    category.descriptionPt ?? undefined,
-  );
+  const translations = resolveCategoryCopy(locale, category);
 
   return {
     slug: category.slug,
     area,
     namePt: category.namePt,
+    nameEn: category.nameEn ?? undefined,
+    nameEs: category.nameEs ?? undefined,
     descriptionPt: category.descriptionPt ?? undefined,
+    descriptionEn: category.descriptionEn ?? undefined,
+    descriptionEs: category.descriptionEs ?? undefined,
     accentColor: category.accentColor ?? undefined,
     sidebarImageUrl:
       category.sidebarImageUrl ??
@@ -479,22 +1035,26 @@ function mapCategory(
     sortOrder: category.sortOrder,
     name: translations.name,
     description: translations.description,
-    products: category.products.map((product) => ({
-      id: product.id,
-      slug: product.slug,
-      categorySlug: category.slug,
-      area,
-      name: product.namePt,
-      originalName: product.namePt,
-      description: product.descriptionPt ?? "",
-      imageUrl: product.imageUrl ?? null,
-      price: moneyToNumber(product.basePrice),
-      isAvailable: product.isAvailable,
-      stockQuantity: product.stockQuantity,
-      prepMinutes: product.prepMinutes,
-      artTone: (product.artTone as PublicProduct["artTone"] | null) ?? "mocha",
-      highlight: product.highlightPt ?? null,
-    })),
+    products: category.products.map((product) => {
+      const productCopy = resolveProductCopy(locale, product);
+
+      return {
+        id: product.id,
+        slug: product.slug,
+        categorySlug: category.slug,
+        area,
+        name: productCopy.name,
+        originalName: product.namePt,
+        description: productCopy.description,
+        imageUrl: product.imageUrl ?? null,
+        price: moneyToNumber(product.basePrice),
+        isAvailable: product.isAvailable,
+        stockQuantity: product.stockQuantity,
+        prepMinutes: product.prepMinutes,
+        artTone: (product.artTone as PublicProduct["artTone"] | null) ?? "mocha",
+        highlight: productCopy.highlight,
+      };
+    }),
   };
 }
 
@@ -503,12 +1063,28 @@ function buildFallbackProducts(): CatalogDashboardProduct[] {
 
   return catalogProducts.slice(0, 24).map((product, index) => {
     const category = categoryMap.get(product.categorySlug);
+    const localized = buildProductLocalizedFields({
+      slug: product.slug,
+      namePt: product.namePt,
+      nameEn: product.nameEn,
+      nameEs: product.nameEs,
+      descriptionPt: product.descriptionPt,
+      descriptionEn: product.descriptionEn,
+      descriptionEs: product.descriptionEs,
+      highlightPt: product.highlightPt,
+      highlightEn: product.highlightEn,
+      highlightEs: product.highlightEs,
+    });
 
     return {
       id: product.slug,
       slug: product.slug,
-      namePt: product.namePt,
-      descriptionPt: product.descriptionPt ?? null,
+      namePt: localized.namePt,
+      nameEn: localized.nameEn,
+      nameEs: localized.nameEs,
+      descriptionPt: localized.descriptionPt,
+      descriptionEn: localized.descriptionEn,
+      descriptionEs: localized.descriptionEs,
       categorySlug: product.categorySlug,
       categoryNamePt: category?.namePt ?? product.categorySlug,
       price: product.price,
@@ -516,7 +1092,9 @@ function buildFallbackProducts(): CatalogDashboardProduct[] {
       isAvailable: product.available ?? product.price !== null,
       isFeatured: product.featured ?? false,
       imageUrl: product.imageUrl ?? null,
-      highlightPt: product.highlightPt ?? null,
+      highlightPt: localized.highlightPt,
+      highlightEn: localized.highlightEn,
+      highlightEs: localized.highlightEs,
       sortOrder: index + 1,
     };
   });
@@ -529,11 +1107,18 @@ function buildFallbackCategories(): CatalogDashboardCategory[] {
   }, {});
 
   return catalogCategories.map((category) => ({
+    ...buildCategoryLocalizedFields({
+      slug: category.slug,
+      namePt: category.namePt,
+      nameEn: category.nameEn,
+      nameEs: category.nameEs,
+      descriptionPt: category.descriptionPt,
+      descriptionEn: category.descriptionEn,
+      descriptionEs: category.descriptionEs,
+    }),
     id: category.slug,
     slug: category.slug,
     area: category.area,
-    namePt: category.namePt,
-    descriptionPt: category.descriptionPt ?? null,
     accentColor: category.accentColor ?? null,
     sidebarImageUrl:
       category.sidebarImageUrl ??
@@ -644,6 +1229,120 @@ function mapSupplier(supplier: {
     isActive: supplier.isActive,
     createdAt: supplier.createdAt.toISOString(),
   };
+}
+
+function getClientAccessMeta(accessStatus: ClientAccessStatus) {
+  if (accessStatus === "BLOCKED") {
+    return { accessStatus, accessLabel: "Bloqueado por cobrança" };
+  }
+
+  if (accessStatus === "OVERDUE") {
+    return { accessStatus, accessLabel: "Em atraso" };
+  }
+
+  if (accessStatus === "WARNING") {
+    return { accessStatus, accessLabel: "Aviso de cobrança" };
+  }
+
+  return { accessStatus, accessLabel: "Operação saudável" };
+}
+
+function buildPlatformClientSummary(input: {
+  id: string;
+  slug: string;
+  name: string;
+  legalName: string | null;
+  ownerName: string | null;
+  billingEmail: string | null;
+  phone: string | null;
+  monthlyFee: Prisma.Decimal | number;
+  billingDayOfMonth: number;
+  graceDays: number;
+  suspensionDays: number;
+  notes: string | null;
+  isActive: boolean;
+  stores: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    isActive: boolean;
+  }>;
+  invoices: BillingInvoiceSummary[];
+}): PlatformClientSummary {
+  const invoicePriority: Record<BillingInvoiceSummary["status"], number> = {
+    BLOCKED: 5,
+    OVERDUE: 4,
+    OPEN: 3,
+    UPCOMING: 2,
+    PAID: 1,
+    CANCELED: 0,
+  };
+
+  const outstandingInvoices = input.invoices
+    .filter((invoice) => !["PAID", "CANCELED"].includes(invoice.status))
+    .sort((left, right) => {
+      const priorityDiff = invoicePriority[right.status] - invoicePriority[left.status];
+
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      return left.dueAt.localeCompare(right.dueAt);
+    });
+
+  const latestInvoice = outstandingInvoices[0] ?? input.invoices[0] ?? null;
+
+  let accessStatus: ClientAccessStatus = "ACTIVE";
+
+  if (!input.isActive) {
+    accessStatus = "BLOCKED";
+  } else if (outstandingInvoices.some((invoice) => invoice.status === "BLOCKED")) {
+    accessStatus = "BLOCKED";
+  } else if (outstandingInvoices.some((invoice) => invoice.status === "OVERDUE")) {
+    accessStatus = "OVERDUE";
+  } else if (
+    outstandingInvoices.some((invoice) =>
+      invoice.status === "UPCOMING" ||
+      invoice.status === "OPEN" ||
+      ((invoice.daysOverdue ?? 0) > 0 && invoice.status !== "PAID"),
+    )
+  ) {
+    accessStatus = "WARNING";
+  }
+
+  const meta = getClientAccessMeta(accessStatus);
+  const lastPaymentAt = input.invoices
+    .filter((invoice) => invoice.paidAt)
+    .sort((left, right) => (right.paidAt ?? "").localeCompare(left.paidAt ?? ""))[0]?.paidAt ?? null;
+
+  const client: PlatformClientSummary = {
+    id: input.id,
+    slug: input.slug,
+    name: input.name,
+    legalName: input.legalName,
+    ownerName: input.ownerName,
+    billingEmail: input.billingEmail,
+    phone: input.phone,
+    monthlyFee: moneyToNumber(input.monthlyFee) ?? defaultClientSeed.monthlyFee,
+    billingDayOfMonth: input.billingDayOfMonth,
+    graceDays: input.graceDays,
+    suspensionDays: input.suspensionDays,
+    notes: input.notes,
+    isActive: input.isActive,
+    accessStatus: meta.accessStatus,
+    accessLabel: meta.accessLabel,
+    storeCount: input.stores.length,
+    activeStoreCount: input.stores.filter((store) => store.isActive).length,
+    outstandingInvoiceCount: outstandingInvoices.length,
+    outstandingAmount: outstandingInvoices.reduce((total, invoice) => total + invoice.amount, 0),
+    nextDueAt: latestInvoice?.dueAt ?? null,
+    lastPaymentAt,
+    alerts: [],
+    stores: input.stores,
+  };
+
+  client.alerts = buildClientAlerts(client, latestInvoice);
+  return client;
 }
 
 async function createUniqueProductSlug(storeId: string, baseName: string, productId?: string) {
@@ -772,6 +1471,7 @@ function resolveExpenseCategory(type: CoffeeInventoryMovementType) {
 
 export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
   if (shouldSkipDatabase) {
+    reportFallback("Banco desativado na configuração da vitrine", storeSlug);
     return buildFallbackStorefront(storeSlug);
   }
 
@@ -783,7 +1483,8 @@ export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
     }
 
     return mapStorefront(store);
-  } catch {
+  } catch (error) {
+    reportFallback("Falha ao carregar a vitrine", storeSlug, error);
     return storeSlug === DEFAULT_STORE_SLUG ? buildFallbackStorefront(storeSlug) : null;
   }
 }
@@ -791,6 +1492,7 @@ export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
 export async function getManagedStores(): Promise<ManagedStoreSummary[]> {
   if (shouldSkipDatabase) {
     const fallback = buildFallbackStorefront();
+    const fallbackMeta = getClientAccessMeta("WARNING");
 
     return [
       {
@@ -803,16 +1505,38 @@ export async function getManagedStores(): Promise<ManagedStoreSummary[]> {
         financeEntryCount: demoFinanceEntries.length,
         publicUrl: fallback.publicUrl,
         updatedAt: new Date().toISOString(),
+        clientAccountId: "fallback-client",
+        clientAccountName: defaultClientSeed.name,
+        clientAccountSlug: defaultClientSeed.slug,
+        clientAccessStatus: fallbackMeta.accessStatus,
+        clientAccessLabel: fallbackMeta.accessLabel,
       },
     ];
   }
 
   try {
     await ensureDefaultStoreRecord();
+    await ensureBillingStructure();
 
     const stores = await prisma.coffeeShopStore.findMany({
       orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
       include: {
+        clientAccount: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            isActive: true,
+            monthlyFee: true,
+            billingDayOfMonth: true,
+            graceDays: true,
+            suspensionDays: true,
+            invoices: {
+              orderBy: [{ dueAt: "desc" }],
+              take: 6,
+            },
+          },
+        },
         _count: {
           select: {
             products: true,
@@ -823,22 +1547,71 @@ export async function getManagedStores(): Promise<ManagedStoreSummary[]> {
       },
     });
 
-    return stores.map((store) => ({
-      id: store.id,
-      slug: store.slug,
-      name: store.name,
-      isActive: store.isActive,
-      productCount: store._count.products,
-      supplierCount: store._count.suppliers,
-      financeEntryCount: store._count.financeEntries,
-      publicUrl: buildStorePublicUrl(
-        store.slug,
-        store.defaultLocale === "en" || store.defaultLocale === "es" ? store.defaultLocale : "pt",
-      ),
-      updatedAt: store.updatedAt.toISOString(),
-    }));
+    return stores.map((store) => {
+      const invoiceSummaries = (store.clientAccount?.invoices ?? []).map((invoice) =>
+        mapBillingInvoiceSummary({
+          ...invoice,
+          amount: invoice.amount,
+          clientAccountId: store.clientAccount?.id ?? "",
+          clientAccount: {
+            name: store.clientAccount?.name ?? defaultClientSeed.name,
+            slug: store.clientAccount?.slug ?? defaultClientSeed.slug,
+            isActive: store.clientAccount?.isActive ?? true,
+            billingDayOfMonth: store.clientAccount?.billingDayOfMonth ?? defaultClientSeed.billingDayOfMonth,
+            graceDays: store.clientAccount?.graceDays ?? defaultClientSeed.graceDays,
+            suspensionDays: store.clientAccount?.suspensionDays ?? defaultClientSeed.suspensionDays,
+          },
+        }),
+      );
+
+      const clientSummary = buildPlatformClientSummary({
+        id: store.clientAccount?.id ?? "fallback-client",
+        slug: store.clientAccount?.slug ?? defaultClientSeed.slug,
+        name: store.clientAccount?.name ?? defaultClientSeed.name,
+        legalName: null,
+        ownerName: null,
+        billingEmail: null,
+        phone: null,
+        monthlyFee: store.clientAccount?.monthlyFee ?? defaultClientSeed.monthlyFee,
+        billingDayOfMonth: store.clientAccount?.billingDayOfMonth ?? defaultClientSeed.billingDayOfMonth,
+        graceDays: store.clientAccount?.graceDays ?? defaultClientSeed.graceDays,
+        suspensionDays: store.clientAccount?.suspensionDays ?? defaultClientSeed.suspensionDays,
+        notes: null,
+        isActive: store.clientAccount?.isActive ?? true,
+        stores: [
+          {
+            id: store.id,
+            slug: store.slug,
+            name: store.name,
+            isActive: store.isActive,
+          },
+        ],
+        invoices: invoiceSummaries,
+      });
+
+      return {
+        id: store.id,
+        slug: store.slug,
+        name: store.name,
+        isActive: store.isActive,
+        productCount: store._count.products,
+        supplierCount: store._count.suppliers,
+        financeEntryCount: store._count.financeEntries,
+        publicUrl: buildStorePublicUrl(
+          store.slug,
+          store.defaultLocale === "en" || store.defaultLocale === "es" ? store.defaultLocale : "pt",
+        ),
+        updatedAt: store.updatedAt.toISOString(),
+        clientAccountId: store.clientAccount?.id ?? null,
+        clientAccountName: store.clientAccount?.name ?? defaultClientSeed.name,
+        clientAccountSlug: store.clientAccount?.slug ?? defaultClientSeed.slug,
+        clientAccessStatus: clientSummary.accessStatus,
+        clientAccessLabel: clientSummary.accessLabel,
+      };
+    });
   } catch {
     const fallback = buildFallbackStorefront();
+    const fallbackMeta = getClientAccessMeta("WARNING");
 
     return [
       {
@@ -851,8 +1624,247 @@ export async function getManagedStores(): Promise<ManagedStoreSummary[]> {
         financeEntryCount: demoFinanceEntries.length,
         publicUrl: fallback.publicUrl,
         updatedAt: new Date().toISOString(),
+        clientAccountId: "fallback-client",
+        clientAccountName: defaultClientSeed.name,
+        clientAccountSlug: defaultClientSeed.slug,
+        clientAccessStatus: fallbackMeta.accessStatus,
+        clientAccessLabel: fallbackMeta.accessLabel,
       },
     ];
+  }
+}
+
+export async function getPlatformAdminDashboard(): Promise<PlatformAdminDashboard> {
+  const buildFallbackPlatformDashboard = (): PlatformAdminDashboard => {
+    const referenceMonth = startOfMonth();
+    const dueAt = buildDueDate(referenceMonth, defaultClientSeed.billingDayOfMonth);
+    const fallbackInvoice = mapBillingInvoiceSummary({
+      id: "fallback-invoice",
+      clientAccountId: "fallback-client",
+      referenceMonth,
+      amount: defaultClientSeed.monthlyFee,
+      dueAt,
+      paidAt: null,
+      reminderSentAt: null,
+      finalNoticeSentAt: null,
+      status: CoffeeBillingInvoiceStatus.OPEN,
+      clientAccount: {
+        name: defaultClientSeed.name,
+        slug: defaultClientSeed.slug,
+        isActive: true,
+        billingDayOfMonth: defaultClientSeed.billingDayOfMonth,
+        graceDays: defaultClientSeed.graceDays,
+        suspensionDays: defaultClientSeed.suspensionDays,
+      },
+    });
+    const fallbackStore = buildFallbackStorefront();
+    const fallbackClient = buildPlatformClientSummary({
+      id: "fallback-client",
+      slug: defaultClientSeed.slug,
+      name: defaultClientSeed.name,
+      legalName: defaultClientSeed.legalName,
+      ownerName: defaultClientSeed.ownerName,
+      billingEmail: defaultClientSeed.billingEmail,
+      phone: null,
+      monthlyFee: defaultClientSeed.monthlyFee,
+      billingDayOfMonth: defaultClientSeed.billingDayOfMonth,
+      graceDays: defaultClientSeed.graceDays,
+      suspensionDays: defaultClientSeed.suspensionDays,
+      notes: defaultClientSeed.notes,
+      isActive: true,
+      stores: [
+        {
+          id: fallbackStore.id,
+          slug: fallbackStore.slug,
+          name: fallbackStore.name,
+          isActive: true,
+        },
+      ],
+      invoices: [fallbackInvoice],
+    });
+
+    return {
+      isLive: false,
+      stats: {
+        clientCount: 1,
+        storeCount: 1,
+        activeStoreCount: 1,
+        blockedClientCount: fallbackClient.accessStatus === "BLOCKED" ? 1 : 0,
+        warningClientCount:
+          fallbackClient.accessStatus === "WARNING" || fallbackClient.accessStatus === "OVERDUE"
+            ? 1
+            : 0,
+        monthlyRecurringRevenue: defaultClientSeed.monthlyFee,
+        outstandingRevenue:
+          fallbackInvoice.status === "PAID" || fallbackInvoice.status === "CANCELED"
+            ? 0
+            : fallbackInvoice.amount,
+      },
+      clients: [fallbackClient],
+      stores: [
+        {
+          id: fallbackStore.id,
+          slug: fallbackStore.slug,
+          name: fallbackStore.name,
+          isActive: true,
+          productCount: buildFallbackProducts().length,
+          supplierCount: 0,
+          financeEntryCount: demoFinanceEntries.length,
+          publicUrl: fallbackStore.publicUrl,
+          updatedAt: new Date().toISOString(),
+          clientAccountId: fallbackClient.id,
+          clientAccountName: fallbackClient.name,
+          clientAccountSlug: fallbackClient.slug,
+          clientAccessStatus: fallbackClient.accessStatus,
+          clientAccessLabel: fallbackClient.accessLabel,
+        },
+      ],
+      invoices: [fallbackInvoice],
+    };
+  };
+
+  if (shouldSkipDatabase) {
+    return buildFallbackPlatformDashboard();
+  }
+
+  try {
+    await ensureDefaultStoreRecord();
+    await ensureBillingStructure();
+
+    const clientAccounts = await prisma.coffeeClientAccount.findMany({
+      orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+      include: {
+        stores: {
+          orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            isActive: true,
+            defaultLocale: true,
+            updatedAt: true,
+            _count: {
+              select: {
+                products: true,
+                suppliers: true,
+                financeEntries: true,
+              },
+            },
+          },
+        },
+        invoices: {
+          orderBy: [{ dueAt: "desc" }],
+          take: 12,
+        },
+      },
+    });
+
+    const clients = clientAccounts.map((clientAccount) => {
+      const invoices = clientAccount.invoices.map((invoice) =>
+        mapBillingInvoiceSummary({
+          ...invoice,
+          amount: invoice.amount,
+          clientAccountId: clientAccount.id,
+          clientAccount: {
+            name: clientAccount.name,
+            slug: clientAccount.slug,
+            isActive: clientAccount.isActive,
+            billingDayOfMonth: clientAccount.billingDayOfMonth,
+            graceDays: clientAccount.graceDays,
+            suspensionDays: clientAccount.suspensionDays,
+          },
+        }),
+      );
+
+      return buildPlatformClientSummary({
+        id: clientAccount.id,
+        slug: clientAccount.slug,
+        name: clientAccount.name,
+        legalName: clientAccount.legalName,
+        ownerName: clientAccount.ownerName,
+        billingEmail: clientAccount.billingEmail,
+        phone: clientAccount.phone,
+        monthlyFee: clientAccount.monthlyFee,
+        billingDayOfMonth: clientAccount.billingDayOfMonth,
+        graceDays: clientAccount.graceDays,
+        suspensionDays: clientAccount.suspensionDays,
+        notes: clientAccount.notes,
+        isActive: clientAccount.isActive,
+        stores: clientAccount.stores.map((store) => ({
+          id: store.id,
+          slug: store.slug,
+          name: store.name,
+          isActive: store.isActive,
+        })),
+        invoices,
+      });
+    });
+
+    const stores: ManagedStoreSummary[] = clientAccounts.flatMap((clientAccount) => {
+      const client = clients.find((entry) => entry.id === clientAccount.id);
+      return clientAccount.stores.map((store) => ({
+        id: store.id,
+        slug: store.slug,
+        name: store.name,
+        isActive: store.isActive,
+        productCount: store._count.products,
+        supplierCount: store._count.suppliers,
+        financeEntryCount: store._count.financeEntries,
+        publicUrl: buildStorePublicUrl(
+          store.slug,
+          store.defaultLocale === "en" || store.defaultLocale === "es" ? store.defaultLocale : "pt",
+        ),
+        updatedAt: store.updatedAt.toISOString(),
+        clientAccountId: clientAccount.id,
+        clientAccountName: clientAccount.name,
+        clientAccountSlug: clientAccount.slug,
+        clientAccessStatus: client?.accessStatus ?? "ACTIVE",
+        clientAccessLabel: client?.accessLabel ?? "Operação saudável",
+      }));
+    });
+
+    const invoices = clientAccounts
+      .flatMap((clientAccount) =>
+        clientAccount.invoices.map((invoice) =>
+          mapBillingInvoiceSummary({
+            ...invoice,
+            amount: invoice.amount,
+            clientAccountId: clientAccount.id,
+            clientAccount: {
+              name: clientAccount.name,
+              slug: clientAccount.slug,
+              isActive: clientAccount.isActive,
+              billingDayOfMonth: clientAccount.billingDayOfMonth,
+              graceDays: clientAccount.graceDays,
+              suspensionDays: clientAccount.suspensionDays,
+            },
+          }),
+        ),
+      )
+      .sort((left, right) => right.dueAt.localeCompare(left.dueAt));
+
+    return {
+      isLive: true,
+      stats: {
+        clientCount: clients.length,
+        storeCount: stores.length,
+        activeStoreCount: stores.filter((store) => store.isActive).length,
+        blockedClientCount: clients.filter((client) => client.accessStatus === "BLOCKED").length,
+        warningClientCount: clients.filter((client) =>
+          client.accessStatus === "WARNING" || client.accessStatus === "OVERDUE",
+        ).length,
+        monthlyRecurringRevenue: clients.reduce((total, client) => total + client.monthlyFee, 0),
+        outstandingRevenue: clients.reduce(
+          (total, client) => total + client.outstandingAmount,
+          0,
+        ),
+      },
+      clients,
+      stores,
+      invoices,
+    };
+  } catch {
+    return buildFallbackPlatformDashboard();
   }
 }
 
@@ -861,6 +1873,7 @@ export async function getCatalog(
   storeSlug = DEFAULT_STORE_SLUG,
 ): Promise<PublicAreaData[]> {
   if (shouldSkipDatabase) {
+    reportFallback("Banco desativado na configuração do catálogo", storeSlug);
     return buildFallbackCatalog(locale);
   }
 
@@ -885,6 +1898,7 @@ export async function getCatalog(
     });
 
     if (!store || store.categories.length === 0) {
+      reportFallback("Loja sem categorias ativas no catálogo", storeSlug);
       return buildFallbackCatalog(locale);
     }
 
@@ -901,7 +1915,8 @@ export async function getCatalog(
       area,
       categories: grouped[area],
     }));
-  } catch {
+  } catch (error) {
+    reportFallback("Falha ao carregar o catálogo", storeSlug, error);
     return buildFallbackCatalog(locale);
   }
 }
@@ -935,6 +1950,7 @@ export async function getOperationsDashboard(
   storeSlug = DEFAULT_STORE_SLUG,
 ): Promise<OperationsDashboard> {
   if (shouldSkipDatabase) {
+    reportFallback("Banco desativado na configuração do painel operacional", storeSlug);
     return buildFallbackDashboard(storeSlug);
   }
 
@@ -990,6 +2006,7 @@ export async function getOperationsDashboard(
     });
 
     if (!store) {
+      reportFallback("Loja não encontrada no painel operacional", storeSlug);
       return buildFallbackDashboard(storeSlug);
     }
 
@@ -1020,7 +2037,11 @@ export async function getOperationsDashboard(
         id: product.id,
         slug: product.slug,
         namePt: product.namePt,
+        nameEn: product.nameEn,
+        nameEs: product.nameEs,
         descriptionPt: product.descriptionPt,
+        descriptionEn: product.descriptionEn,
+        descriptionEs: product.descriptionEs,
         categorySlug: product.category.slug,
         categoryNamePt: product.category.namePt,
         price: moneyToNumber(product.basePrice),
@@ -1029,6 +2050,8 @@ export async function getOperationsDashboard(
         isFeatured: product.isFeatured,
         imageUrl: product.imageUrl,
         highlightPt: product.highlightPt,
+        highlightEn: product.highlightEn,
+        highlightEs: product.highlightEs,
         sortOrder: product.sortOrder,
       })),
       categories: store.categories.map<CatalogDashboardCategory>((category) => ({
@@ -1036,7 +2059,11 @@ export async function getOperationsDashboard(
         slug: category.slug,
         area: reverseAreaMap[category.area],
         namePt: category.namePt,
+        nameEn: category.nameEn,
+        nameEs: category.nameEs,
         descriptionPt: category.descriptionPt,
+        descriptionEn: category.descriptionEn,
+        descriptionEs: category.descriptionEs,
         accentColor: category.accentColor,
         sidebarImageUrl: category.sidebarImageUrl,
         sortOrder: category.sortOrder,
@@ -1047,18 +2074,113 @@ export async function getOperationsDashboard(
       financeEntries: store.financeEntries.map(mapFinanceEntry),
       suppliers: store.suppliers.map(mapSupplier),
     };
-  } catch {
+  } catch (error) {
+    reportFallback("Falha ao carregar o painel operacional", storeSlug, error);
     return buildFallbackDashboard(storeSlug);
   }
 }
 
+async function resolveClientAccountId(clientAccountId?: string | null) {
+  if (clientAccountId?.trim()) {
+    const existing = await prisma.coffeeClientAccount.findUnique({
+      where: { id: clientAccountId.trim() },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new Error("Cliente não encontrado para vincular a cafeteria.");
+    }
+
+    return existing.id;
+  }
+
+  const defaultClient = await ensureBillingStructure();
+  return defaultClient.id;
+}
+
+export async function createClientAccount(input: {
+  slug: string;
+  name: string;
+  legalName?: string;
+  ownerName?: string;
+  billingEmail?: string;
+  phone?: string;
+  monthlyFee?: number | null;
+  billingDayOfMonth?: number | null;
+  graceDays?: number | null;
+  suspensionDays?: number | null;
+  notes?: string;
+}) {
+  const slug = slugify(input.slug);
+
+  if (!slug) {
+    throw new Error("Informe um slug válido para o cliente.");
+  }
+
+  if (!input.name.trim()) {
+    throw new Error("Informe o nome do cliente.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.coffeeClientAccount.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new Error("Já existe um cliente com esse identificador.");
+    }
+
+    const clientAccount = await tx.coffeeClientAccount.create({
+      data: filterModelWriteData("CoffeeClientAccount", {
+        slug,
+        name: input.name.trim(),
+        legalName: cleanOptionalString(input.legalName),
+        ownerName: cleanOptionalString(input.ownerName),
+        billingEmail: cleanOptionalString(input.billingEmail),
+        phone: cleanOptionalString(input.phone),
+        monthlyFee:
+          typeof input.monthlyFee === "number" && Number.isFinite(input.monthlyFee) && input.monthlyFee > 0
+            ? input.monthlyFee
+            : defaultClientSeed.monthlyFee,
+        billingDayOfMonth:
+          typeof input.billingDayOfMonth === "number" && Number.isFinite(input.billingDayOfMonth)
+            ? Math.max(1, Math.round(input.billingDayOfMonth))
+            : defaultClientSeed.billingDayOfMonth,
+        graceDays:
+          typeof input.graceDays === "number" && Number.isFinite(input.graceDays)
+            ? Math.max(0, Math.round(input.graceDays))
+            : defaultClientSeed.graceDays,
+        suspensionDays:
+          typeof input.suspensionDays === "number" && Number.isFinite(input.suspensionDays)
+            ? Math.max(1, Math.round(input.suspensionDays))
+            : defaultClientSeed.suspensionDays,
+        notes: cleanOptionalString(input.notes),
+      }) as Prisma.CoffeeClientAccountUncheckedCreateInput,
+    });
+
+    await ensureMonthlyBillingInvoice(tx, {
+      id: clientAccount.id,
+      monthlyFee: clientAccount.monthlyFee,
+      billingDayOfMonth: clientAccount.billingDayOfMonth,
+    });
+
+    return clientAccount;
+  });
+}
+
 export async function createManagedStore(input: {
+  clientAccountId?: string;
   slug: string;
   name: string;
   legalName?: string;
   defaultLocale?: Locale;
   sloganPt?: string;
+  sloganEn?: string;
+  sloganEs?: string;
   storefrontDescriptionPt?: string;
+  storefrontDescriptionEn?: string;
+  storefrontDescriptionEs?: string;
   logoUrl?: string;
   brandPrimaryColor?: string;
   brandSecondaryColor?: string;
@@ -1070,6 +2192,12 @@ export async function createManagedStore(input: {
     throw new Error("Informe um slug válido para a cafeteria.");
   }
 
+  if (!input.name.trim()) {
+    throw new Error("Informe o nome da cafeteria.");
+  }
+
+  const resolvedClientAccountId = await resolveClientAccountId(input.clientAccountId);
+
   return prisma.$transaction(async (tx) => {
     const existing = await tx.coffeeShopStore.findUnique({
       where: { slug },
@@ -1080,18 +2208,15 @@ export async function createManagedStore(input: {
       throw new Error("Já existe uma cafeteria com esse endereço.");
     }
 
+    const localizedStoreContent = buildStoreLocalizedFields(input);
     const store = await tx.coffeeShopStore.create({
       data: filterModelWriteData("CoffeeShopStore", {
+        clientAccountId: resolvedClientAccountId,
         slug,
         name: input.name.trim(),
         legalName: cleanOptionalString(input.legalName),
         defaultLocale: input.defaultLocale ?? "pt",
-        sloganPt: cleanOptionalBoundedString(
-          input.sloganPt,
-          "A frase do cabeçalho",
-          STOREFRONT_SLOGAN_MAX_LENGTH,
-        ),
-        storefrontDescriptionPt: cleanOptionalString(input.storefrontDescriptionPt),
+        ...localizedStoreContent,
         logoUrl: cleanOptionalString(input.logoUrl),
         brandPrimaryColor: cleanOptionalString(input.brandPrimaryColor),
         brandSecondaryColor: cleanOptionalString(input.brandSecondaryColor),
@@ -1105,7 +2230,11 @@ export async function createManagedStore(input: {
       ...store,
       legalName: store.legalName,
       sloganPt: store.sloganPt,
+      sloganEn: store.sloganEn,
+      sloganEs: store.sloganEs,
       storefrontDescriptionPt: store.storefrontDescriptionPt,
+      storefrontDescriptionEn: store.storefrontDescriptionEn,
+      storefrontDescriptionEs: store.storefrontDescriptionEs,
       logoUrl: store.logoUrl,
       brandPrimaryColor: store.brandPrimaryColor,
       brandSecondaryColor: store.brandSecondaryColor,
@@ -1116,13 +2245,62 @@ export async function createManagedStore(input: {
   });
 }
 
+export async function markBillingInvoiceReminder(
+  invoiceId: string,
+  noticeType: "REMINDER" | "FINAL_NOTICE",
+) {
+  const invoice = await prisma.coffeeBillingInvoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true, paidAt: true, status: true },
+  });
+
+  if (!invoice) {
+    throw new Error("Cobrança não encontrada.");
+  }
+
+  if (invoice.paidAt || invoice.status === CoffeeBillingInvoiceStatus.PAID) {
+    throw new Error("Essa cobrança já foi quitada.");
+  }
+
+  return prisma.coffeeBillingInvoice.update({
+    where: { id: invoiceId },
+    data:
+      noticeType === "FINAL_NOTICE"
+        ? { finalNoticeSentAt: new Date() }
+        : { reminderSentAt: new Date() },
+  });
+}
+
+export async function markBillingInvoicePaid(invoiceId: string) {
+  const invoice = await prisma.coffeeBillingInvoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true, status: true },
+  });
+
+  if (!invoice) {
+    throw new Error("Cobrança não encontrada.");
+  }
+
+  return prisma.coffeeBillingInvoice.update({
+    where: { id: invoiceId },
+    data: {
+      paidAt: new Date(),
+      status: CoffeeBillingInvoiceStatus.PAID,
+    },
+  });
+}
+
 export async function updateStorefrontSettings(input: {
   storeSlug: string;
   name: string;
   legalName?: string;
   defaultLocale?: Locale;
   sloganPt?: string;
+  sloganEn?: string;
+  sloganEs?: string;
   storefrontDescriptionPt?: string;
+  storefrontDescriptionEn?: string;
+  storefrontDescriptionEs?: string;
   logoUrl?: string;
   brandPrimaryColor?: string;
   brandSecondaryColor?: string;
@@ -1132,6 +2310,7 @@ export async function updateStorefrontSettings(input: {
   isActive?: boolean;
 }) {
   const store = await getStoreOrThrow(input.storeSlug);
+  const localizedStoreContent = buildStoreLocalizedFields(input);
 
   return prisma.coffeeShopStore.update({
     where: { id: store.id },
@@ -1139,12 +2318,7 @@ export async function updateStorefrontSettings(input: {
       name: input.name.trim(),
       legalName: cleanOptionalString(input.legalName),
       defaultLocale: input.defaultLocale ?? store.defaultLocale,
-      sloganPt: cleanOptionalBoundedString(
-        input.sloganPt,
-        "A frase do cabeçalho",
-        STOREFRONT_SLOGAN_MAX_LENGTH,
-      ),
-      storefrontDescriptionPt: cleanOptionalString(input.storefrontDescriptionPt),
+      ...localizedStoreContent,
       logoUrl: cleanOptionalString(input.logoUrl),
       brandPrimaryColor: cleanOptionalString(input.brandPrimaryColor),
       brandSecondaryColor: cleanOptionalString(input.brandSecondaryColor),
@@ -1159,6 +2333,12 @@ export async function updateStorefrontSettings(input: {
 export async function updateCategoryVisuals(input: {
   storeSlug: string;
   categoryId: string;
+  namePt?: string;
+  nameEn?: string;
+  nameEs?: string;
+  descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   accentColor?: string;
   sidebarImageUrl?: string;
   isActive?: boolean;
@@ -1176,9 +2356,29 @@ export async function updateCategoryVisuals(input: {
     throw new Error("Categoria não encontrada.");
   }
 
+  const nextName = input.namePt?.trim() || category.namePt;
+
+  if (!nextName) {
+    throw new Error("Informe o nome da seção.");
+  }
+
+  const localized = buildCategoryLocalizedFields({
+    slug: category.slug,
+    namePt: nextName,
+    nameEn: input.nameEn !== undefined ? input.nameEn : category.nameEn,
+    nameEs: input.nameEs !== undefined ? input.nameEs : category.nameEs,
+    descriptionPt:
+      input.descriptionPt !== undefined ? input.descriptionPt : category.descriptionPt,
+    descriptionEn:
+      input.descriptionEn !== undefined ? input.descriptionEn : category.descriptionEn,
+    descriptionEs:
+      input.descriptionEs !== undefined ? input.descriptionEs : category.descriptionEs,
+  });
+
   return prisma.coffeeCatalogCategory.update({
     where: { id: category.id },
     data: {
+      ...localized,
       accentColor: cleanOptionalString(input.accentColor),
       sidebarImageUrl: cleanOptionalString(input.sidebarImageUrl),
       ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
@@ -1190,7 +2390,11 @@ export async function createCatalogCategory(input: {
   storeSlug?: string;
   area: MenuAreaSlug;
   namePt: string;
+  nameEn?: string;
+  nameEs?: string;
   descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   accentColor?: string;
   sidebarImageUrl?: string;
   isActive?: boolean;
@@ -1237,13 +2441,22 @@ export async function createCatalogCategory(input: {
       sortOrder = maxSortOrder + 10;
     }
 
+    const localized = buildCategoryLocalizedFields({
+      slug,
+      namePt: nextName,
+      nameEn: input.nameEn,
+      nameEs: input.nameEs,
+      descriptionPt: input.descriptionPt,
+      descriptionEn: input.descriptionEn,
+      descriptionEs: input.descriptionEs,
+    });
+
     return tx.coffeeCatalogCategory.create({
       data: {
         storeId: store.id,
         area,
         slug,
-        namePt: nextName,
-        descriptionPt: cleanOptionalString(input.descriptionPt),
+        ...localized,
         accentColor: cleanOptionalString(input.accentColor),
         sidebarImageUrl: cleanOptionalString(input.sidebarImageUrl),
         sortOrder,
@@ -1257,12 +2470,18 @@ export async function createCatalogProduct(input: {
   storeSlug?: string;
   categorySlug: string;
   namePt: string;
+  nameEn?: string;
+  nameEs?: string;
   descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   price?: number | null;
   stockQuantity?: number | null;
   imageUrl?: string;
   isAvailable?: boolean;
   highlightPt?: string;
+  highlightEn?: string;
+  highlightEs?: string;
   isFeatured?: boolean;
   placement?: "FIRST" | "LAST";
 }) {
@@ -1305,19 +2524,30 @@ export async function createCatalogProduct(input: {
       sortOrder = maxSortOrder + 1;
     }
 
+    const localized = buildProductLocalizedFields({
+      slug,
+      namePt: input.namePt,
+      nameEn: input.nameEn,
+      nameEs: input.nameEs,
+      descriptionPt: input.descriptionPt,
+      descriptionEn: input.descriptionEn,
+      descriptionEs: input.descriptionEs,
+      highlightPt: input.highlightPt,
+      highlightEn: input.highlightEn,
+      highlightEs: input.highlightEs,
+    });
+
     return tx.coffeeProduct.create({
       data: {
         storeId: store.id,
         categoryId: category.id,
         slug,
-        namePt: input.namePt.trim(),
-        descriptionPt: cleanOptionalString(input.descriptionPt),
+        ...localized,
         basePrice: toNullableNumber(input.price),
         stockQuantity:
           typeof input.stockQuantity === "number" ? Math.max(0, Math.round(input.stockQuantity)) : 0,
         imageUrl: cleanOptionalString(input.imageUrl),
         isAvailable: Boolean(input.isAvailable),
-        highlightPt: cleanOptionalString(input.highlightPt),
         isFeatured: Boolean(input.isFeatured),
         artTone: getToneForCategory(category.area),
         sortOrder,
@@ -1331,12 +2561,18 @@ export async function updateCatalogProduct(input: {
   productId: string;
   categorySlug?: string;
   namePt?: string;
+  nameEn?: string;
+  nameEs?: string;
   descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
   price?: number | null;
   stockQuantity?: number | null;
   isAvailable?: boolean;
   imageUrl?: string;
   highlightPt?: string;
+  highlightEn?: string;
+  highlightEs?: string;
   isFeatured?: boolean;
   sortOrder?: number | null;
 }) {
@@ -1375,17 +2611,31 @@ export async function updateCatalogProduct(input: {
     nextName !== product.namePt
       ? await createUniqueProductSlug(store.id, nextName, product.id)
       : product.slug;
+  const localized = buildProductLocalizedFields({
+    slug: nextSlug,
+    namePt: nextName,
+    nameEn: input.nameEn !== undefined ? input.nameEn : product.nameEn,
+    nameEs: input.nameEs !== undefined ? input.nameEs : product.nameEs,
+    descriptionPt:
+      input.descriptionPt !== undefined ? input.descriptionPt : product.descriptionPt,
+    descriptionEn:
+      input.descriptionEn !== undefined ? input.descriptionEn : product.descriptionEn,
+    descriptionEs:
+      input.descriptionEs !== undefined ? input.descriptionEs : product.descriptionEs,
+    highlightPt:
+      input.highlightPt !== undefined ? input.highlightPt : product.highlightPt,
+    highlightEn:
+      input.highlightEn !== undefined ? input.highlightEn : product.highlightEn,
+    highlightEs:
+      input.highlightEs !== undefined ? input.highlightEs : product.highlightEs,
+  });
 
   return prisma.coffeeProduct.update({
     where: { id: product.id },
     data: {
       categoryId: nextCategory.id,
       slug: nextSlug,
-      namePt: nextName,
-      descriptionPt:
-        input.descriptionPt !== undefined
-          ? cleanOptionalString(input.descriptionPt)
-          : product.descriptionPt,
+      ...localized,
       basePrice:
         input.price !== undefined ? toNullableNumber(input.price) : product.basePrice,
       stockQuantity:
@@ -1396,10 +2646,6 @@ export async function updateCatalogProduct(input: {
         typeof input.isAvailable === "boolean" ? input.isAvailable : product.isAvailable,
       imageUrl:
         input.imageUrl !== undefined ? cleanOptionalString(input.imageUrl) : product.imageUrl,
-      highlightPt:
-        input.highlightPt !== undefined
-          ? cleanOptionalString(input.highlightPt)
-          : product.highlightPt,
       isFeatured:
         typeof input.isFeatured === "boolean" ? input.isFeatured : product.isFeatured,
       sortOrder:
@@ -1720,7 +2966,11 @@ export async function createOrder(payload: CheckoutPayload & { storeSlug?: strin
   };
 }
 
-export async function getOrderById(id: string, storeSlug?: string) {
+export async function getOrderById(
+  id: string,
+  storeSlug?: string,
+  locale: Locale = "pt",
+) {
   if (shouldSkipDatabase) {
     return demoOrders.find((order) => order.id === id) ?? null;
   }
@@ -1736,7 +2986,13 @@ export async function getOrderById(id: string, storeSlug?: string) {
 
     const order = await prisma.coffeeOrder.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
     });
 
     if (!order || (storeId && order.storeId !== storeId)) {
@@ -1753,13 +3009,19 @@ export async function getOrderById(id: string, storeSlug?: string) {
       total: Number(order.total),
       requiresCounterPayment: order.requiresCounterPayment,
       createdAt: order.createdAt.toISOString(),
-      items: order.items.map((item) => ({
-        id: item.id,
-        name: item.productNamePt,
-        quantity: item.quantity,
-        unitPrice: moneyToNumber(item.unitPrice),
-        notes: item.notes,
-      })),
+      items: order.items.map((item) => {
+        const localizedProductName = item.product
+          ? resolveProductCopy(locale, item.product).name
+          : item.productNamePt;
+
+        return {
+          id: item.id,
+          name: localizedProductName,
+          quantity: item.quantity,
+          unitPrice: moneyToNumber(item.unitPrice),
+          notes: item.notes,
+        };
+      }),
     };
   } catch {
     return demoOrders.find((order) => order.id === id) ?? null;
