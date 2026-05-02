@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 
 type ImageUploadFieldProps = {
   name: string;
@@ -13,13 +13,15 @@ type ImageUploadFieldProps = {
 
 type EditorState = {
   source: string;
+  imageWidth: number;
+  imageHeight: number;
   zoom: number;
   positionX: number;
   positionY: number;
   revokeOnClose: boolean;
 };
 
-const TARGET_IMAGE_BYTES = 480_000;
+const TARGET_IMAGE_BYTES = 200_000;
 const START_MAX_DIMENSION = 1400;
 const MIN_MAX_DIMENSION = 420;
 const INITIAL_QUALITY = 0.86;
@@ -34,14 +36,11 @@ function clamp(value: number, min: number, max: number) {
 function loadImageFromSrc(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
-
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("image-load-error"));
-
     if (!src.startsWith("data:") && !src.startsWith("/")) {
       image.crossOrigin = "anonymous";
     }
-
     image.src = src;
   });
 }
@@ -54,7 +53,6 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
           reject(new Error("image-encode-error"));
           return;
         }
-
         resolve(blob);
       },
       "image/webp",
@@ -66,16 +64,13 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
 function blobToDataUrl(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onload = () => {
       if (typeof reader.result === "string") {
         resolve(reader.result);
         return;
       }
-
       reject(new Error("image-read-error"));
     };
-
     reader.onerror = () => reject(new Error("image-read-error"));
     reader.readAsDataURL(blob);
   });
@@ -83,30 +78,16 @@ function blobToDataUrl(blob: Blob) {
 
 function getFrameSize(aspectRatio: number) {
   if (aspectRatio >= 1) {
-    return {
-      width: 1000,
-      height: Math.max(1, Math.round(1000 / aspectRatio)),
-    };
+    return { width: 1000, height: Math.max(1, Math.round(1000 / aspectRatio)) };
   }
-
-  return {
-    width: Math.max(1, Math.round(1000 * aspectRatio)),
-    height: 1000,
-  };
+  return { width: Math.max(1, Math.round(1000 * aspectRatio)), height: 1000 };
 }
 
 function getOutputSize(aspectRatio: number, longestSide: number) {
   if (aspectRatio >= 1) {
-    return {
-      width: longestSide,
-      height: Math.max(1, Math.round(longestSide / aspectRatio)),
-    };
+    return { width: longestSide, height: Math.max(1, Math.round(longestSide / aspectRatio)) };
   }
-
-  return {
-    width: Math.max(1, Math.round(longestSide * aspectRatio)),
-    height: longestSide,
-  };
+  return { width: Math.max(1, Math.round(longestSide * aspectRatio)), height: longestSide };
 }
 
 async function renderAdjustedImage(
@@ -120,9 +101,7 @@ async function renderAdjustedImage(
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
 
-  if (!sourceWidth || !sourceHeight) {
-    throw new Error("image-dimension-error");
-  }
+  if (!sourceWidth || !sourceHeight) throw new Error("image-dimension-error");
 
   const frame = getFrameSize(aspectRatio);
   const coverScale = Math.max(frame.width / sourceWidth, frame.height / sourceHeight);
@@ -141,9 +120,7 @@ async function renderAdjustedImage(
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
 
-  if (!context) {
-    throw new Error("canvas-context-error");
-  }
+  if (!context) throw new Error("canvas-context-error");
 
   let longestSide = START_MAX_DIMENSION;
   let fallbackBlob: Blob | null = null;
@@ -162,81 +139,121 @@ async function renderAdjustedImage(
     canvas.width = output.width;
     canvas.height = output.height;
     context.clearRect(0, 0, output.width, output.height);
-    context.drawImage(
-      image,
-      cropX,
-      cropY,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      output.width,
-      output.height,
-    );
+    context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, output.width, output.height);
 
     for (let quality = INITIAL_QUALITY; quality >= MIN_QUALITY; quality -= QUALITY_STEP) {
       const blob = await canvasToBlob(canvas, Number(quality.toFixed(2)));
       fallbackBlob = blob;
-
-      if (blob.size <= TARGET_IMAGE_BYTES) {
-        return blobToDataUrl(blob);
-      }
+      if (blob.size <= TARGET_IMAGE_BYTES) return blobToDataUrl(blob);
     }
 
     longestSide = Math.round(longestSide * DIMENSION_STEP);
   }
 
-  if (fallbackBlob) {
-    return blobToDataUrl(fallbackBlob);
+  if (fallbackBlob) return blobToDataUrl(fallbackBlob);
+  throw new Error("image-optimize-error");
+}
+
+function zoomAroundPoint(
+  state: EditorState,
+  scaleFactor: number,
+  focalXContainer: number,
+  focalYContainer: number,
+  containerWidth: number,
+  containerHeight: number,
+  cropAspectRatio: number,
+): EditorState {
+  const newZoom = clamp(state.zoom * scaleFactor, 1, 2.8);
+  if (newZoom === state.zoom) return state;
+
+  const frame = getFrameSize(cropAspectRatio);
+  const coverScale = Math.max(frame.width / state.imageWidth, frame.height / state.imageHeight);
+  const overflowX = Math.max(0, state.imageWidth * coverScale * state.zoom - frame.width);
+  const overflowY = Math.max(0, state.imageHeight * coverScale * state.zoom - frame.height);
+  const newOverflowX = Math.max(0, state.imageWidth * coverScale * newZoom - frame.width);
+  const newOverflowY = Math.max(0, state.imageHeight * coverScale * newZoom - frame.height);
+
+  // Focal point in conceptual 1000px frame coordinates
+  const fx = focalXContainer * (frame.width / containerWidth);
+  const fy = focalYContainer * (frame.height / containerHeight);
+
+  let newPositionX = state.positionX;
+  let newPositionY = state.positionY;
+
+  if (newOverflowX > 0) {
+    const A = (state.positionX / 100) * overflowX + fx;
+    newPositionX = clamp(((newZoom / state.zoom) * A - fx) / newOverflowX * 100, 0, 100);
   }
 
-  throw new Error("image-optimize-error");
+  if (newOverflowY > 0) {
+    const B = (state.positionY / 100) * overflowY + fy;
+    newPositionY = clamp(((newZoom / state.zoom) * B - fy) / newOverflowY * 100, 0, 100);
+  }
+
+  return { ...state, zoom: newZoom, positionX: newPositionX, positionY: newPositionY };
+}
+
+function getPreviewImageStyle(editor: EditorState, aspectRatio: number): CSSProperties {
+  const frame = getFrameSize(aspectRatio);
+  const coverScale = Math.max(frame.width / editor.imageWidth, frame.height / editor.imageHeight);
+  const renderedWidth = editor.imageWidth * coverScale * editor.zoom;
+  const renderedHeight = editor.imageHeight * coverScale * editor.zoom;
+  const overflowX = Math.max(0, renderedWidth - frame.width);
+  const overflowY = Math.max(0, renderedHeight - frame.height);
+  const left = -(editor.positionX / 100) * overflowX;
+  const top = -(editor.positionY / 100) * overflowY;
+
+  return {
+    height: `${(renderedHeight / frame.height) * 100}%`,
+    left: `${(left / frame.width) * 100}%`,
+    top: `${(top / frame.height) * 100}%`,
+    width: `${(renderedWidth / frame.width) * 100}%`,
+  };
 }
 
 export function ImageUploadField({
   name,
   label,
   defaultValue = "",
-  description = "A imagem e otimizada automaticamente antes de salvar.",
-  previewClassName = "aspect-[4/3] rounded-[18px]",
   cropAspectRatio = 4 / 3,
 }: ImageUploadFieldProps) {
   const inputId = useId();
   const [value, setValue] = useState(defaultValue ?? "");
-  const [feedback, setFeedback] = useState(
-    value ? "Imagem pronta para salvar." : "Selecione uma imagem para enviar.",
-  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const prevPinchDist = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!editor) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
+    if (!editor) return undefined;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = prev;
     };
   }, [editor]);
 
+  useEffect(() => {
+    setValue(defaultValue ?? "");
+  }, [defaultValue]);
+
   function closeEditor() {
     setEditor((current) => {
-      if (current?.revokeOnClose) {
-        URL.revokeObjectURL(current.source);
-      }
-
+      if (current?.revokeOnClose) URL.revokeObjectURL(current.source);
       return null;
     });
+    activePointers.current.clear();
+    prevPinchDist.current = null;
   }
 
   async function openEditor(source: string, revokeOnClose: boolean) {
-    await loadImageFromSrc(source);
-
+    const image = await loadImageFromSrc(source);
     setEditor({
       source,
+      imageWidth: image.naturalWidth || image.width,
+      imageHeight: image.naturalHeight || image.height,
       zoom: 1,
       positionX: 50,
       positionY: 50,
@@ -244,317 +261,312 @@ export function ImageUploadField({
     });
   }
 
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size >= 2) {
+      const pts = Array.from(activePointers.current.values());
+      prevPinchDist.current = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    }
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!activePointers.current.has(e.pointerId) || !editor) return;
+
+    const prev = activePointers.current.get(e.pointerId)!;
+    const delta = { x: e.clientX - prev.x, y: e.clientY - prev.y };
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 1) {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+
+      const frame = getFrameSize(cropAspectRatio);
+      const coverScale = Math.max(
+        frame.width / editor.imageWidth,
+        frame.height / editor.imageHeight,
+      );
+      const renderedWidth = editor.imageWidth * coverScale * editor.zoom;
+      const renderedHeight = editor.imageHeight * coverScale * editor.zoom;
+      const overflowX = renderedWidth - frame.width;
+      const overflowY = renderedHeight - frame.height;
+
+      setEditor((current) => {
+        if (!current) return current;
+
+        let newPosX = current.positionX;
+        let newPosY = current.positionY;
+
+        if (overflowX > 0) {
+          const pixelOffsetX = (current.positionX / 100) * overflowX;
+          const newPixelOffsetX = pixelOffsetX - delta.x * (frame.width / rect.width);
+          newPosX = clamp((newPixelOffsetX / overflowX) * 100, 0, 100);
+        }
+
+        if (overflowY > 0) {
+          const pixelOffsetY = (current.positionY / 100) * overflowY;
+          const newPixelOffsetY = pixelOffsetY - delta.y * (frame.height / rect.height);
+          newPosY = clamp((newPixelOffsetY / overflowY) * 100, 0, 100);
+        }
+
+        return { ...current, positionX: newPosX, positionY: newPosY };
+      });
+    } else if (activePointers.current.size >= 2 && prevPinchDist.current !== null) {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+
+      const pts = Array.from(activePointers.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const scale = dist / prevPinchDist.current;
+      prevPinchDist.current = dist;
+
+      const focalX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const focalY = (pts[0].y + pts[1].y) / 2 - rect.top;
+
+      setEditor((current) => {
+        if (!current) return current;
+        return zoomAroundPoint(current, scale, focalX, focalY, rect.width, rect.height, cropAspectRatio);
+      });
+    }
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size < 2) {
+      prevPinchDist.current = null;
+    }
+  }
+
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const factor = e.deltaY < 0 ? 1.08 : 0.93;
+    const focalX = e.clientX - rect.left;
+    const focalY = e.clientY - rect.top;
+
+    setEditor((current) => {
+      if (!current) return current;
+      return zoomAroundPoint(current, factor, focalX, focalY, rect.width, rect.height, cropAspectRatio);
+    });
+  }
+
+  async function handleSave() {
+    if (!editor) return;
+    setIsProcessing(true);
+    try {
+      const adjusted = await renderAdjustedImage(
+        editor.source,
+        cropAspectRatio,
+        editor.zoom,
+        editor.positionX,
+        editor.positionY,
+      );
+      setValue(adjusted);
+      closeEditor();
+    } catch {
+      window.alert("Nao foi possivel processar essa imagem.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  const thumbAspect = cropAspectRatio >= 1 ? "aspect-[4/3]" : "aspect-square";
+
   return (
     <>
-      <div className="space-y-3">
-        <div>
-          <p className="text-sm font-semibold text-[var(--espresso)]">{label}</p>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{description}</p>
+      <input type="hidden" name={name} value={value} />
+
+      <div className="flex items-center gap-3">
+        <div
+          className={`flex-shrink-0 w-16 ${thumbAspect} overflow-hidden rounded-xl border border-[var(--line)] bg-[rgba(255,252,247,0.92)]`}
+        >
+          {value ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={value} alt={label} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="text-[var(--muted)]"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </div>
+          )}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[168px_minmax(0,1fr)]">
-          <div
-            className={`overflow-hidden border border-[var(--line)] bg-[rgba(255,252,247,0.92)] ${previewClassName}`}
-          >
-            {value ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={value} alt={label} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full min-h-[120px] items-center justify-center px-4 text-center text-xs leading-5 text-[var(--muted)]">
-                Nenhuma imagem selecionada
-              </div>
-            )}
-          </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--espresso)]">{label}</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            <label
+              htmlFor={inputId}
+              className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                isProcessing
+                  ? "cursor-wait border-[var(--line)] text-[var(--muted)]"
+                  : "border-[var(--line)] bg-white/82 text-[var(--espresso)]"
+              }`}
+            >
+              {isProcessing ? "Preparando..." : value ? "Trocar imagem" : "Fazer upload"}
+            </label>
 
-          <div className="space-y-3">
-            <input type="hidden" name={name} value={value} />
-
-            <div className="flex flex-wrap gap-3">
-              <label
-                htmlFor={inputId}
-                className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold ${
-                  isProcessing
-                    ? "cursor-wait border-[var(--line)] bg-[rgba(255,252,247,0.78)] text-[var(--muted)]"
-                    : "cursor-pointer border-[var(--line)] bg-white/82 text-[var(--espresso)]"
-                }`}
-              >
-                {isProcessing ? "Preparando..." : value ? "Trocar imagem" : "Fazer upload"}
-              </label>
-
+            {value && !isProcessing && (
               <button
                 type="button"
                 onClick={async () => {
-                  if (!value) {
-                    return;
-                  }
-
                   setIsProcessing(true);
-                  setFeedback("Abrindo o ajuste de enquadramento.");
-
                   try {
                     await openEditor(value, false);
-                    setFeedback("Ajuste o enquadramento e salve.");
                   } catch {
-                    setFeedback("Nao foi possivel abrir essa imagem para ajuste.");
                     window.alert("Nao foi possivel abrir essa imagem para ajuste.");
                   } finally {
                     setIsProcessing(false);
                   }
                 }}
-                disabled={isProcessing || !value}
-                className="inline-flex items-center justify-center rounded-full border border-[rgba(61,34,23,0.12)] px-4 py-2 text-sm font-semibold text-[var(--espresso)] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex items-center rounded-full border border-[var(--line)] bg-white/82 px-3 py-1 text-xs font-semibold text-[var(--espresso)]"
               >
-                Ajustar enquadramento
+                Ajustar
               </button>
+            )}
 
+            {value && !isProcessing && (
               <button
                 type="button"
-                onClick={() => {
-                  setValue("");
-                  setFeedback("Imagem removida.");
-                }}
-                disabled={isProcessing || !value}
-                className="inline-flex items-center justify-center rounded-full border border-[rgba(149,89,92,0.18)] px-4 py-2 text-sm font-semibold text-[var(--tone-berry)] disabled:cursor-not-allowed disabled:opacity-45"
+                onClick={() => setValue("")}
+                className="inline-flex items-center rounded-full border border-[rgba(149,89,92,0.18)] px-3 py-1 text-xs font-semibold text-[var(--tone-berry)]"
               >
-                Remover imagem
+                Remover
               </button>
-            </div>
-
-            <p className="text-xs leading-5 text-[var(--muted)]">{feedback}</p>
-
-            <input
-              id={inputId}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              disabled={isProcessing}
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-
-                if (!file) {
-                  return;
-                }
-
-                const objectUrl = URL.createObjectURL(file);
-                setIsProcessing(true);
-                setFeedback("Abrindo a tela de ajuste da imagem.");
-
-                try {
-                  await openEditor(objectUrl, true);
-                } catch {
-                  URL.revokeObjectURL(objectUrl);
-                  setFeedback("Nao foi possivel processar essa imagem.");
-                  window.alert("Nao foi possivel processar essa imagem. Tente outra foto.");
-                } finally {
-                  setIsProcessing(false);
-                  event.target.value = "";
-                }
-              }}
-            />
+            )}
           </div>
         </div>
       </div>
 
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        disabled={isProcessing}
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+
+          const objectUrl = URL.createObjectURL(file);
+          setIsProcessing(true);
+
+          try {
+            await openEditor(objectUrl, true);
+          } catch {
+            URL.revokeObjectURL(objectUrl);
+            window.alert("Nao foi possivel processar essa imagem. Tente outra foto.");
+          } finally {
+            setIsProcessing(false);
+            event.target.value = "";
+          }
+        }}
+      />
+
       {editor ? (
-        <div className="fixed inset-0 z-[80]">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <button
             type="button"
-            className="absolute inset-0 bg-[rgba(40,21,14,0.55)] backdrop-blur-[4px]"
-            aria-label="Fechar ajuste de imagem"
+            className="absolute inset-0 bg-[rgba(40,21,14,0.65)] backdrop-blur-[4px]"
+            aria-label="Fechar editor"
             onClick={closeEditor}
           />
 
-          <div className="absolute inset-x-0 bottom-0 top-0 overflow-y-auto p-4 md:p-8">
-            <div className="mx-auto w-full max-w-5xl card-panel p-5 md:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand-strong)]">
-                    Ajuste de enquadramento
-                  </p>
-                  <h3 className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{label}</h3>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-                    Use a grade da regra dos tercos para posicionar melhor o foco da imagem no
-                    formato em que ela sera exibida publicamente.
-                  </p>
+          <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-strong)]">
+                  Ajuste de enquadramento
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-[var(--espresso)]">{label}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-[var(--line)] bg-white/82 text-lg text-[var(--espresso)]"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="bg-[#20130f] px-4 pt-4">
+              <div
+                ref={containerRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onWheel={handleWheel}
+                className="relative w-full cursor-grab overflow-hidden rounded-xl select-none active:cursor-grabbing touch-none"
+                style={{ aspectRatio: `${cropAspectRatio}` }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={editor.source}
+                  alt={label}
+                  className="pointer-events-none absolute max-w-none object-fill"
+                  style={getPreviewImageStyle(editor, cropAspectRatio)}
+                  draggable={false}
+                />
+
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="absolute inset-0 border border-white/32" />
+                  <div className="absolute bottom-0 left-1/3 top-0 w-px bg-white/28" />
+                  <div className="absolute bottom-0 left-2/3 top-0 w-px bg-white/28" />
+                  <div className="absolute left-0 right-0 top-1/3 h-px bg-white/28" />
+                  <div className="absolute left-0 right-0 top-2/3 h-px bg-white/28" />
                 </div>
 
-                <button
-                  type="button"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--line)] bg-white/82 text-xl text-[var(--espresso)]"
-                  aria-label="Fechar editor"
-                  onClick={closeEditor}
-                >
-                  ×
-                </button>
+                <div className="absolute bottom-2.5 right-2.5 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-white/90">
+                  {editor.zoom.toFixed(1)}×
+                </div>
               </div>
 
-              <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="rounded-[28px] border border-[var(--line)] bg-[#20130f] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div
-                    className="relative mx-auto w-full max-w-3xl overflow-hidden rounded-[22px] border border-white/12 bg-black/35"
-                    style={{ aspectRatio: `${cropAspectRatio}` }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={editor.source}
-                      alt={label}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      style={{
-                        objectPosition: `${editor.positionX}% ${editor.positionY}%`,
-                        transform: `scale(${editor.zoom})`,
-                        transformOrigin: "center",
-                      }}
-                    />
+              <p className="py-2.5 text-center text-[11px] text-white/40">
+                Arraste para mover · Scroll ou pinça para o zoom
+              </p>
+            </div>
 
-                    <div className="pointer-events-none absolute inset-0">
-                      <div className="absolute inset-0 border border-white/32" />
-                      <div className="absolute bottom-0 left-1/3 top-0 w-px bg-white/28" />
-                      <div className="absolute bottom-0 left-2/3 top-0 w-px bg-white/28" />
-                      <div className="absolute left-0 right-0 top-1/3 h-px bg-white/28" />
-                      <div className="absolute left-0 right-0 top-2/3 h-px bg-white/28" />
-                    </div>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between gap-3 px-5 py-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setEditor((current) =>
+                    current ? { ...current, zoom: 1, positionX: 50, positionY: 50 } : current,
+                  )
+                }
+                className="text-xs text-[var(--muted)] underline-offset-2 hover:underline"
+              >
+                Centralizar
+              </button>
 
-                <div className="space-y-4 rounded-[26px] border border-[var(--line)] bg-white/82 p-5">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-[var(--espresso)]">Zoom</span>
-                      <span className="text-xs text-[var(--muted)]">
-                        {editor.zoom.toFixed(2)}x
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="2.8"
-                      step="0.01"
-                      value={editor.zoom}
-                      onChange={(event) =>
-                        setEditor((current) =>
-                          current
-                            ? {
-                                ...current,
-                                zoom: Number(event.target.value),
-                              }
-                            : current,
-                        )
-                      }
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-[var(--espresso)]">
-                        Horizontal
-                      </span>
-                      <span className="text-xs text-[var(--muted)]">
-                        {Math.round(editor.positionX)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={editor.positionX}
-                      onChange={(event) =>
-                        setEditor((current) =>
-                          current
-                            ? {
-                                ...current,
-                                positionX: Number(event.target.value),
-                              }
-                            : current,
-                        )
-                      }
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-[var(--espresso)]">Vertical</span>
-                      <span className="text-xs text-[var(--muted)]">
-                        {Math.round(editor.positionY)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={editor.positionY}
-                      onChange={(event) =>
-                        setEditor((current) =>
-                          current
-                            ? {
-                                ...current,
-                                positionY: Number(event.target.value),
-                              }
-                            : current,
-                        )
-                      }
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() =>
-                        setEditor((current) =>
-                          current
-                            ? {
-                                ...current,
-                                zoom: 1,
-                                positionX: 50,
-                                positionY: 50,
-                              }
-                            : current,
-                        )
-                      }
-                    >
-                      Centralizar
-                    </button>
-
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={async () => {
-                        if (!editor) {
-                          return;
-                        }
-
-                        setIsProcessing(true);
-                        setFeedback("Aplicando o enquadramento da imagem.");
-
-                        try {
-                          const adjustedImage = await renderAdjustedImage(
-                            editor.source,
-                            cropAspectRatio,
-                            editor.zoom,
-                            editor.positionX,
-                            editor.positionY,
-                          );
-
-                          setValue(adjustedImage);
-                          setFeedback("Imagem ajustada e pronta para salvar.");
-                          closeEditor();
-                        } catch {
-                          setFeedback("Nao foi possivel aplicar o enquadramento.");
-                          window.alert("Nao foi possivel aplicar o enquadramento dessa imagem.");
-                        } finally {
-                          setIsProcessing(false);
-                        }
-                      }}
-                    >
-                      Aplicar enquadramento
-                    </button>
-                  </div>
-                </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={closeEditor} className="btn-secondary text-sm">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isProcessing}
+                  className="btn-primary text-sm disabled:opacity-50"
+                >
+                  {isProcessing ? "Salvando..." : "Salvar imagem"}
+                </button>
               </div>
             </div>
           </div>

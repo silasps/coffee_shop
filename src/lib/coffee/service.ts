@@ -973,7 +973,11 @@ async function getStoreRecord(storeSlug = DEFAULT_STORE_SLUG) {
   }
 
   if (storeSlug === DEFAULT_STORE_SLUG) {
-    return ensureDefaultStoreRecord();
+    const existingStore = await prisma.coffeeShopStore.findUnique({
+      where: { slug: DEFAULT_STORE_SLUG },
+    });
+
+    return existingStore ?? ensureDefaultStoreRecord();
   }
 
   return prisma.coffeeShopStore.findUnique({
@@ -1879,7 +1883,7 @@ export async function getCatalog(
 
   try {
     if (storeSlug === DEFAULT_STORE_SLUG) {
-      await ensureDefaultStoreRecord();
+      await getStoreRecord(storeSlug);
     }
 
     const store = await prisma.coffeeShopStore.findUnique({
@@ -2333,6 +2337,7 @@ export async function updateStorefrontSettings(input: {
 export async function updateCategoryVisuals(input: {
   storeSlug: string;
   categoryId: string;
+  categorySlug?: string;
   namePt?: string;
   nameEn?: string;
   nameEs?: string;
@@ -2347,8 +2352,11 @@ export async function updateCategoryVisuals(input: {
 
   const category = await prisma.coffeeCatalogCategory.findFirst({
     where: {
-      id: input.categoryId,
       storeId: store.id,
+      OR: [
+        ...(input.categoryId ? [{ id: input.categoryId }] : []),
+        ...(input.categorySlug ? [{ slug: input.categorySlug }] : []),
+      ],
     },
   });
 

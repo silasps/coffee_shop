@@ -552,6 +552,7 @@ export function AdminProductsPanel({
                                   <form action={updateCategoryVisualAction} className="mt-4 grid gap-4">
                                     <input type="hidden" name="storeSlug" value={storeSlug} />
                                     <input type="hidden" name="categoryId" value={categoryRecord?.id ?? ""} />
+                                    <input type="hidden" name="categorySlug" value={displayCategory.slug} />
 
                                     <div className="grid gap-4 lg:grid-cols-3">
                                       <label className="block">

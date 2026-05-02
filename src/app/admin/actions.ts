@@ -154,6 +154,7 @@ export async function updateCategoryVisualAction(formData: FormData) {
   await updateCategoryVisuals({
     storeSlug,
     categoryId: formData.get("categoryId")?.toString() ?? "",
+    categorySlug: formData.get("categorySlug")?.toString() ?? "",
     namePt: formData.get("namePt")?.toString() ?? "",
     nameEn: formData.get("nameEn")?.toString() ?? "",
     nameEs: formData.get("nameEs")?.toString() ?? "",

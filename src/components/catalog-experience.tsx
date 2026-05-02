@@ -29,7 +29,7 @@ type CatalogExperienceProps = {
 
 const preferredOrder: MenuAreaSlug[] = ["hot-drinks", "cold-drinks", "foods"];
 const FALLBACK_HEADER_HEIGHT = 118;
-const FALLBACK_TOOLBAR_HEIGHT = 58;
+const FALLBACK_TOOLBAR_HEIGHT = 46;
 
 const foodCategoryLabelOverrides = {
   pt: {
@@ -155,8 +155,9 @@ export function CatalogExperience({
       : getAreaName(currentArea, locale);
   const toolbarTop = headerHeight + 6;
   const stickyTop = toolbarTop + toolbarHeight + 12;
-  const contentSpacerHeight = toolbarHeight + 10;
-  const viewportPanelHeight = `calc(100dvh - ${stickyTop + 16}px)`;
+  const contentSpacerHeight = toolbarHeight + 8;
+  const bottomDockHeight = 132;
+  const viewportPanelHeight = `calc(100dvh - ${stickyTop + bottomDockHeight}px)`;
 
   const resetContentScroll = () => {
     contentRef.current?.scrollTo({ top: 0, left: 0 });
@@ -204,24 +205,22 @@ export function CatalogExperience({
   }, []);
 
   return (
-    <section className="site-shell mt-4 pb-0">
+    <section className="site-shell mt-4 pb-36">
       <div
         ref={toolbarRef}
         className="fixed left-1/2 z-40 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2 bg-transparent px-1 py-1"
         style={{ top: `${toolbarTop}px` }}
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
+        <div className="grid items-center">
           <label className="block min-w-0">
             <span className="sr-only">{copy.searchLabel}</span>
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={dictionary.searchPlaceholder}
-              className="field text-sm"
+              className="field h-10 rounded-[14px] border-[rgba(61,34,23,0.1)] bg-[rgba(255,253,249,0.72)] px-4 py-2 text-[13px] shadow-[0_8px_20px_rgba(61,34,23,0.06)] backdrop-blur-md placeholder:text-[rgba(110,91,81,0.72)]"
             />
           </label>
-
-          <CartDrawer locale={locale} storeSlug={storeSlug} tone="light" compact />
         </div>
       </div>
 
@@ -360,6 +359,8 @@ export function CatalogExperience({
           </div>
         </div>
       </div>
+
+      <CartDrawer locale={locale} storeSlug={storeSlug} tone="light" docked />
     </section>
   );
 }
