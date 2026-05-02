@@ -226,9 +226,7 @@ export function AdminProductsPanel({
       ? foodsArea?.categories.filter((category) => category.slug === effectiveFoodCategorySlug) ?? []
       : catalog.find((entry) => entry.area === selectedArea)?.categories ?? [];
   const activeCatalogLabel =
-    selectedArea === "foods"
-      ? displayCategories[0]?.name ?? "Sem categorias"
-      : areaLabels[selectedArea];
+    areaLabels[selectedArea];
   const activeCatalogProductCount = displayCategories.reduce(
     (total, category) => total + category.products.length,
     0,
@@ -523,19 +521,14 @@ export function AdminProductsPanel({
                           return (
                             <section
                               key={displayCategory.slug}
+                              aria-label={displayCategory.name}
                               className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]"
                             >
                               <div className="border-b border-[rgba(72,46,34,0.08)] px-4 py-4 sm:px-5">
-                                <div className="flex flex-wrap items-end justify-between gap-3">
-                                  <div>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div className="min-w-0">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
                                       {areaLabels[displayCategory.area]}
-                                    </p>
-                                    <h2 className="display-title mt-2 text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
-                                      {displayCategory.name}
-                                    </h2>
-                                    <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
-                                      {displayCategory.description || "Sem descricao cadastrada."}
                                     </p>
                                   </div>
                                   <span className="rounded-full bg-[rgba(61,34,23,0.08)] px-3 py-1 text-xs font-semibold text-[var(--espresso)]">

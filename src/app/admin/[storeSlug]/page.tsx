@@ -181,9 +181,7 @@ export default async function StoreAdminPage({
       ? { area: "foods", category: selectedFoodCategorySlug }
       : { area: requestedArea };
   const activeCatalogLabel =
-    requestedArea === "foods"
-      ? displayCategories[0]?.name ?? "Sem categorias"
-      : areaLabels[requestedArea];
+    areaLabels[requestedArea];
   const activeCatalogProductCount = displayCategories.reduce(
     (total, category) => total + category.products.length,
     0,

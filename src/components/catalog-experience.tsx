@@ -122,8 +122,6 @@ export function CatalogExperience({
   const foodsArea = orderedCatalog.find((entry) => entry.area === "foods") ?? null;
   const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea, locale) : [];
   const activeFoodCategory = selectedFoodCategory ?? foodsArea?.categories[0]?.slug ?? null;
-  const activeFoodSidebarItem =
-    foodSidebarItems.find((item) => item.slug === activeFoodCategory) ?? null;
   const activeFoodCategoryData =
     foodsArea?.categories.find((category) => category.slug === activeFoodCategory) ?? null;
   const displayArea =
@@ -150,13 +148,11 @@ export function CatalogExperience({
 
   const headerTitle = isSearchMode
     ? copy.searchResultsTitle
-    : currentArea === "foods" && activeFoodSidebarItem
-      ? activeFoodSidebarItem.label
-      : getAreaName(currentArea, locale);
+    : getAreaName(currentArea, locale);
   const toolbarTop = headerHeight + 6;
   const stickyTop = toolbarTop + toolbarHeight + 12;
   const contentSpacerHeight = toolbarHeight + 8;
-  const bottomDockHeight = 132;
+  const bottomDockHeight = 108;
   const viewportPanelHeight = `calc(100dvh - ${stickyTop + bottomDockHeight}px)`;
 
   const resetContentScroll = () => {
@@ -205,7 +201,7 @@ export function CatalogExperience({
   }, []);
 
   return (
-    <section className="site-shell mt-4 pb-36">
+    <section className="site-shell mt-4 pb-28">
       <div
         ref={toolbarRef}
         className="fixed left-1/2 z-40 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2 bg-transparent px-1 py-1"
@@ -427,13 +423,10 @@ function CategorySection({
   storeSlug: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]">
-      <div className="px-4 pt-4 sm:px-5 sm:pt-5">
-        <h2 className="display-title text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
-          {category.name}
-        </h2>
-      </div>
-
+    <section
+      aria-label={category.name}
+      className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]"
+    >
       <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3">
         {category.products.map((product) => (
           <ProductRow
