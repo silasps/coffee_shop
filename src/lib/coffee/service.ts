@@ -1974,7 +1974,6 @@ export async function getOperationsDashboard(
         products: {
           include: { category: true },
           orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { namePt: "asc" }],
-          take: 60,
         },
         categories: {
           include: {
