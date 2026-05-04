@@ -287,7 +287,7 @@ export function CatalogExperience({
                   >
                     {"<"}
                   </button>
-                  <h1 className="display-title text-center text-2xl font-semibold leading-none text-[var(--espresso)] sm:text-3xl">
+                  <h1 className="display-title text-center text-lg font-semibold leading-none text-[var(--espresso)] sm:text-2xl">
                     {headerTitle}
                   </h1>
                   <span aria-hidden="true" />
@@ -315,7 +315,7 @@ export function CatalogExperience({
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
                             {copy.areaLabel}
                           </p>
-                          <h2 className="display-title mt-2 text-2xl font-semibold text-[var(--espresso)] sm:text-3xl">
+                          <h2 className="display-title mt-2 text-lg font-semibold text-[var(--espresso)] sm:text-2xl">
                             {getAreaName(areaData.area, locale)}
                           </h2>
                         </div>
@@ -374,7 +374,7 @@ function SidebarGroup({
 }) {
   return (
     <div className="space-y-2">
-      <p className="pb-1 text-left text-xl font-medium leading-none text-black sm:text-2xl">
+      <p className="pb-1 text-left text-base font-medium leading-none text-black sm:text-lg">
         {title}
       </p>
       <div className="flex flex-col items-center gap-3">{children}</div>
@@ -454,13 +454,13 @@ function CategoryTileGrid({
   onSelect: (categorySlug: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 p-4 min-[430px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-3 p-4 sm:gap-4 sm:p-5 lg:grid-cols-4">
       {categories.map((category) => (
         <button
           key={category.slug}
           type="button"
           onClick={() => onSelect(category.slug)}
-          className="relative mx-auto flex aspect-square w-full max-w-[220px] items-end justify-center overflow-hidden rounded-[24px] text-center text-base font-medium leading-tight text-white transition hover:-translate-y-[1px] min-[430px]:max-w-none sm:min-h-[132px]"
+          className="relative flex aspect-square min-w-0 items-end justify-center overflow-hidden rounded-[22px] text-center text-sm font-medium leading-tight text-white transition hover:-translate-y-[1px] min-[430px]:text-base sm:min-h-[132px] sm:rounded-[24px]"
         >
           <SectionCardArt
             label={category.name}
@@ -468,7 +468,7 @@ function CategoryTileGrid({
             imageUrl={getCategoryPreviewImage(category)}
           />
           <span
-            className="display-title relative z-10 flex min-h-12 items-center justify-center px-3 py-3 text-lg leading-none"
+            className="display-title relative z-10 flex min-h-10 items-center justify-center px-2 py-2 text-xs leading-none min-[430px]:text-sm sm:min-h-12 sm:px-3 sm:py-3 sm:text-base"
             style={{ textShadow: "0 3px 14px rgba(0, 0, 0, 0.5)" }}
           >
             {category.name}
@@ -491,7 +491,7 @@ function ProductList({
       aria-label={category.name}
       className="overflow-hidden"
     >
-      <div className="grid gap-4 p-3 sm:grid-cols-2 sm:p-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 p-3 min-[520px]:grid-cols-2 sm:gap-4 sm:p-5 xl:grid-cols-3">
         {category.products.map((product) => (
           <ProductRow
             key={product.slug}
@@ -514,7 +514,7 @@ function ProductRow({
   return (
     <article
       aria-label={product.name}
-      className="overflow-hidden rounded-[24px] bg-[#d9d9d9] shadow-[0_10px_20px_rgba(61,34,23,0.1)] transition hover:-translate-y-[1px]"
+      className="min-w-0 overflow-hidden rounded-[24px] bg-[#d9d9d9] shadow-[0_10px_20px_rgba(61,34,23,0.1)] transition hover:-translate-y-[1px]"
     >
       <div className="flex h-full flex-col">
         <div className="relative">
@@ -533,7 +533,7 @@ function ProductRow({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col p-4">
-          <h3 className="text-xl font-semibold leading-6 text-black sm:text-2xl">
+          <h3 className="text-sm font-semibold leading-4 text-black sm:text-xl sm:leading-6">
             {product.name}
           </h3>
 
@@ -542,7 +542,7 @@ function ProductRow({
           </p>
 
           <div className="mt-4">
-            <p className="text-2xl font-semibold leading-none text-black">
+            <p className="text-base font-semibold leading-none text-black sm:text-2xl">
               {formatMoney(product.price, locale)}
             </p>
 

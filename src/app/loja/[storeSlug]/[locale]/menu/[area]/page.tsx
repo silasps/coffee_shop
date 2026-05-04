@@ -5,7 +5,7 @@ import { isValidLocale } from "@/lib/coffee/i18n";
 import { getCatalog, getStorefront } from "@/lib/coffee/service";
 import { menuAreas, type Locale, type MenuAreaSlug } from "@/lib/coffee/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function StoreAreaPage({
   params,

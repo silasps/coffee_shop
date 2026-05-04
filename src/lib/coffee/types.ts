@@ -58,6 +58,7 @@ export type CatalogProductSeed = {
 };
 
 export type PublicCategory = CatalogCategorySeed & {
+  id: string;
   name: string;
   description: string;
   products: PublicProduct[];

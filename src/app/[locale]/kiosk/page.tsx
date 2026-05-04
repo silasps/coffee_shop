@@ -6,7 +6,7 @@ import { isValidLocale } from "@/lib/coffee/i18n";
 import { getCatalog, getStorefront } from "@/lib/coffee/service";
 import type { Locale } from "@/lib/coffee/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function KioskPage({
   params,

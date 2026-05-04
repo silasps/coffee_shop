@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import {
   CoffeeFinanceCategory,
   CoffeeFinanceDirection,
@@ -15,6 +15,8 @@ import {
   createManagedStore,
   createSupplier,
   deleteCatalogProduct,
+  getPublicCatalogCacheTag,
+  getPublicStorefrontCacheTag,
   markBillingInvoicePaid,
   markBillingInvoiceReminder,
   updateCatalogProduct,
@@ -49,6 +51,8 @@ function revalidateStorePaths(storeSlug: string) {
   revalidatePath(`/admin/${storeSlug}`);
   revalidatePath("/financeiro");
   revalidatePath(`/loja/${storeSlug}`, "layout");
+  revalidateTag(getPublicStorefrontCacheTag(storeSlug), { expire: 0 });
+  revalidateTag(getPublicCatalogCacheTag(storeSlug), { expire: 0 });
 }
 
 function revalidatePlatformPaths() {

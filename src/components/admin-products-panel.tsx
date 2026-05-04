@@ -50,7 +50,7 @@ type AdminProductsPanelProps = {
 
 const areaLabels = {
   foods: "Comidas",
-  "hot-drinks": "Bebidas quentes",
+  "hot-drinks": "Bebidas quente",
   "cold-drinks": "Bebidas geladas",
 } as const;
 

@@ -1,6 +1,5 @@
 import {
   CoffeeBillingInvoiceStatus,
-  CoffeeCatalogCategory,
   CoffeeFinanceCategory,
   CoffeeFinanceDirection,
   CoffeeInventoryMovementType,
@@ -11,6 +10,7 @@ import {
   CoffeePaymentStatus,
   Prisma,
 } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { z } from "zod";
 import {
   areaCategoryOrder,
@@ -102,6 +102,17 @@ const defaultCatalogSections: Record<MenuAreaSlug, Omit<CatalogDashboardSection,
 
 const shouldSkipDatabase = process.env.COFFEE_SHOP_SKIP_DB === "1";
 const modelFieldCache = new Map<string, Set<string>>();
+const PUBLIC_CACHE_SECONDS = 300;
+
+export function getPublicStorefrontCacheTag(storeSlug = DEFAULT_STORE_SLUG) {
+  return `coffee-storefront:${storeSlug}`;
+}
+
+export function getPublicCatalogCacheTag(storeSlug = DEFAULT_STORE_SLUG, locale?: Locale) {
+  return locale
+    ? `coffee-catalog:${storeSlug}:${locale}`
+    : `coffee-catalog:${storeSlug}`;
+}
 
 function formatErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -218,6 +229,26 @@ function moneyToNumber(value: Prisma.Decimal | number | null | undefined) {
 function cleanOptionalString(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function isInlineImageUrl(value: string | null | undefined) {
+  return Boolean(value?.startsWith("data:image/"));
+}
+
+function buildPublicImagePath(kind: "category" | "product", id: string) {
+  return `/api/coffee-images/${kind}/${encodeURIComponent(id)}`;
+}
+
+function normalizePublicImageUrl(
+  value: string | null | undefined,
+  kind: "category" | "product",
+  id: string,
+) {
+  if (!value) {
+    return null;
+  }
+
+  return isInlineImageUrl(value) ? buildPublicImagePath(kind, id) : value;
 }
 
 function cleanOptionalBoundedString(
@@ -792,6 +823,7 @@ function buildFallbackCatalog(locale: Locale): PublicAreaData[] {
 
         return {
           ...category,
+          id: category.slug,
           sidebarImageUrl:
             category.sidebarImageUrl ??
             products.find((product) => product.imageUrl)?.imageUrl ??
@@ -1068,34 +1100,46 @@ async function getStoreOrThrow(storeSlug = DEFAULT_STORE_SLUG) {
   return store;
 }
 
-function mapCategory(
-  locale: Locale,
-  category: CoffeeCatalogCategory & {
-    products: Array<{
-      id: string;
-      slug: string;
-      namePt: string;
-      nameEn: string | null;
-      nameEs: string | null;
-      descriptionPt: string | null;
-      descriptionEn: string | null;
-      descriptionEs: string | null;
-      imageUrl: string | null;
-      basePrice: Prisma.Decimal | null;
-      isAvailable: boolean;
-      stockQuantity: number | null;
-      prepMinutes: number | null;
-      artTone: string | null;
-      highlightPt: string | null;
-      highlightEn: string | null;
-      highlightEs: string | null;
-    }>;
-  },
-): PublicCategory {
+type PublicCatalogCategoryRecord = {
+  id: string;
+  area: CoffeeMenuArea;
+  slug: string;
+  namePt: string;
+  nameEn: string | null;
+  nameEs: string | null;
+  descriptionPt: string | null;
+  descriptionEn: string | null;
+  descriptionEs: string | null;
+  accentColor: string | null;
+  sidebarImageUrl: string | null;
+  sortOrder: number;
+  products: Array<{
+    id: string;
+    slug: string;
+    namePt: string;
+    nameEn: string | null;
+    nameEs: string | null;
+    descriptionPt: string | null;
+    descriptionEn: string | null;
+    descriptionEs: string | null;
+    imageUrl: string | null;
+    basePrice: Prisma.Decimal | null;
+    isAvailable: boolean;
+    stockQuantity: number | null;
+    prepMinutes: number | null;
+    artTone: string | null;
+    highlightPt: string | null;
+    highlightEn: string | null;
+    highlightEs: string | null;
+  }>;
+};
+
+function mapCategory(locale: Locale, category: PublicCatalogCategoryRecord): PublicCategory {
   const area = reverseAreaMap[category.area];
   const translations = resolveCategoryCopy(locale, category);
 
   return {
+    id: category.id,
     slug: category.slug,
     area,
     namePt: category.namePt,
@@ -1106,8 +1150,11 @@ function mapCategory(
     descriptionEs: category.descriptionEs ?? undefined,
     accentColor: category.accentColor ?? undefined,
     sidebarImageUrl:
-      category.sidebarImageUrl ??
-      category.products.find((product) => product.imageUrl)?.imageUrl ??
+      normalizePublicImageUrl(category.sidebarImageUrl, "category", category.id) ??
+      (() => {
+        const product = category.products.find((item) => item.imageUrl);
+        return product ? normalizePublicImageUrl(product.imageUrl, "product", product.id) : null;
+      })() ??
       null,
     sortOrder: category.sortOrder,
     name: translations.name,
@@ -1123,7 +1170,7 @@ function mapCategory(
         name: productCopy.name,
         originalName: product.namePt,
         description: productCopy.description,
-        imageUrl: product.imageUrl ?? null,
+        imageUrl: normalizePublicImageUrl(product.imageUrl, "product", product.id),
         price: moneyToNumber(product.basePrice),
         isAvailable: product.isAvailable,
         stockQuantity: product.stockQuantity,
@@ -1554,7 +1601,7 @@ function resolveExpenseCategory(type: CoffeeInventoryMovementType) {
     : CoffeeFinanceCategory.OPERATIONS;
 }
 
-export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
+async function getStorefrontUncached(storeSlug = DEFAULT_STORE_SLUG) {
   if (shouldSkipDatabase) {
     reportFallback("Banco desativado na configuração da vitrine", storeSlug);
     return buildFallbackStorefront(storeSlug);
@@ -1572,6 +1619,17 @@ export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
     reportFallback("Falha ao carregar a vitrine", storeSlug, error);
     return storeSlug === DEFAULT_STORE_SLUG ? buildFallbackStorefront(storeSlug) : null;
   }
+}
+
+export async function getStorefront(storeSlug = DEFAULT_STORE_SLUG) {
+  return unstable_cache(
+    () => getStorefrontUncached(storeSlug),
+    ["coffee-public-storefront", storeSlug],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [getPublicStorefrontCacheTag(storeSlug)],
+    },
+  )();
 }
 
 export async function getManagedStores(): Promise<ManagedStoreSummary[]> {
@@ -1953,7 +2011,7 @@ export async function getPlatformAdminDashboard(): Promise<PlatformAdminDashboar
   }
 }
 
-export async function getCatalog(
+async function getCatalogUncached(
   locale: Locale,
   storeSlug = DEFAULT_STORE_SLUG,
 ): Promise<PublicAreaData[]> {
@@ -1963,17 +2021,44 @@ export async function getCatalog(
   }
 
   try {
-    if (storeSlug === DEFAULT_STORE_SLUG) {
-      await getStoreRecord(storeSlug);
-    }
-
     const store = await prisma.coffeeShopStore.findUnique({
       where: { slug: storeSlug },
-      include: {
+      select: {
         categories: {
           where: { isActive: true },
-          include: {
+          select: {
+            id: true,
+            area: true,
+            slug: true,
+            namePt: true,
+            nameEn: true,
+            nameEs: true,
+            descriptionPt: true,
+            descriptionEn: true,
+            descriptionEs: true,
+            accentColor: true,
+            sidebarImageUrl: true,
+            sortOrder: true,
             products: {
+              select: {
+                id: true,
+                slug: true,
+                namePt: true,
+                nameEn: true,
+                nameEs: true,
+                descriptionPt: true,
+                descriptionEn: true,
+                descriptionEs: true,
+                imageUrl: true,
+                basePrice: true,
+                isAvailable: true,
+                stockQuantity: true,
+                prepMinutes: true,
+                artTone: true,
+                highlightPt: true,
+                highlightEn: true,
+                highlightEs: true,
+              },
               orderBy: [{ sortOrder: "asc" }, { namePt: "asc" }],
             },
           },
@@ -2004,6 +2089,23 @@ export async function getCatalog(
     reportFallback("Falha ao carregar o catálogo", storeSlug, error);
     return buildFallbackCatalog(locale);
   }
+}
+
+export async function getCatalog(
+  locale: Locale,
+  storeSlug = DEFAULT_STORE_SLUG,
+): Promise<PublicAreaData[]> {
+  return unstable_cache(
+    () => getCatalogUncached(locale, storeSlug),
+    ["coffee-public-catalog", storeSlug, locale],
+    {
+      revalidate: PUBLIC_CACHE_SECONDS,
+      tags: [
+        getPublicCatalogCacheTag(storeSlug),
+        getPublicCatalogCacheTag(storeSlug, locale),
+      ],
+    },
+  )();
 }
 
 export async function getAreaCatalog(
