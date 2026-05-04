@@ -454,13 +454,13 @@ function CategoryTileGrid({
   onSelect: (categorySlug: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 p-4 min-[430px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
       {categories.map((category) => (
         <button
           key={category.slug}
           type="button"
           onClick={() => onSelect(category.slug)}
-          className="relative flex aspect-square min-h-[116px] items-end justify-center overflow-hidden rounded-[24px] text-center text-base font-medium leading-tight text-white transition hover:-translate-y-[1px] sm:min-h-[132px]"
+          className="relative mx-auto flex aspect-square w-full max-w-[220px] items-end justify-center overflow-hidden rounded-[24px] text-center text-base font-medium leading-tight text-white transition hover:-translate-y-[1px] min-[430px]:max-w-none sm:min-h-[132px]"
         >
           <SectionCardArt
             label={category.name}
