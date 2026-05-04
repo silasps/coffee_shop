@@ -27,6 +27,7 @@ export const areaCategoryOrder: Record<MenuAreaSlug, string[]> = {
     "sodas",
     "cold-beverages",
     "juices-and-vitaminas",
+    "vitaminas",
     "milkshakes-and-frappes",
   ],
 };
@@ -84,7 +85,7 @@ export const catalogCategories: CatalogCategorySeed[] = [
   {
     slug: "desserts",
     area: "foods",
-    namePt: "Sobremesas",
+    namePt: "Bolos",
     descriptionPt: "Fatia de bolo caseiro para combinar com bebidas quentes.",
     accentColor: "var(--tone-berry)",
     sortOrder: 70,
@@ -158,8 +159,8 @@ export const catalogCategories: CatalogCategorySeed[] = [
   {
     slug: "cold-teas-and-lemonade",
     area: "cold-drinks",
-    namePt: "Chás Gelados e Limonada",
-    descriptionPt: "Opções refrescantes para pedidos rápidos ou retirada no balcão.",
+    namePt: "Chás Gelados",
+    descriptionPt: "Chás batidos e refrescantes para pedidos rápidos ou retirada no balcão.",
     accentColor: "var(--tone-forest)",
     sortOrder: 20,
   },
@@ -174,18 +175,26 @@ export const catalogCategories: CatalogCategorySeed[] = [
   {
     slug: "cold-beverages",
     area: "cold-drinks",
-    namePt: "Bebidas",
-    descriptionPt: "Geladeira completa com refrigerantes, energéticos, água e sucos prontos.",
+    namePt: "Refrigerantes",
+    descriptionPt: "Geladeira completa com refrigerantes, energéticos, água e opções prontas.",
     accentColor: "var(--tone-cream)",
     sortOrder: 40,
   },
   {
     slug: "juices-and-vitaminas",
     area: "cold-drinks",
-    namePt: "Sucos e Vitaminas",
-    descriptionPt: "Sucos naturais, polpas batidas e vitamina especial da casa.",
+    namePt: "Sucos",
+    descriptionPt: "Sucos naturais, polpas batidas e limonada da casa.",
     accentColor: "var(--tone-amber)",
     sortOrder: 50,
+  },
+  {
+    slug: "vitaminas",
+    area: "cold-drinks",
+    namePt: "Vitaminas",
+    descriptionPt: "Vitaminas cremosas batidas na hora.",
+    accentColor: "var(--tone-cream)",
+    sortOrder: 55,
   },
   {
     slug: "milkshakes-and-frappes",
@@ -789,7 +798,7 @@ export const catalogProducts: CatalogProductSeed[] = [
   },
   {
     slug: "limonada-suica",
-    categorySlug: "cold-teas-and-lemonade",
+    categorySlug: "juices-and-vitaminas",
     namePt: "Limonada Suíça",
     descriptionPt: "400 ml com leite condensado.",
     price: 12,
@@ -1157,7 +1166,7 @@ export const catalogProducts: CatalogProductSeed[] = [
   },
   {
     slug: "vitamina-banana-maca",
-    categorySlug: "juices-and-vitaminas",
+    categorySlug: "vitaminas",
     namePt: "Vitamina Banana com Maçã",
     descriptionPt: "400 ml batidos na hora.",
     price: 16,

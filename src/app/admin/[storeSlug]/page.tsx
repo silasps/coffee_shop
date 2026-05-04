@@ -16,7 +16,10 @@ import {
   updateSupplierAction,
 } from "@/app/admin/actions";
 import { formatMoney } from "@/lib/coffee/i18n";
-import { buildStoreAdminPath } from "@/lib/coffee/paths";
+import {
+  buildInternalHrefFromPublicUrl,
+  buildStoreAdminPath,
+} from "@/lib/coffee/paths";
 import { getCatalog, getOperationsDashboard, getStorefront } from "@/lib/coffee/service";
 import { STOREFRONT_SLOGAN_MAX_LENGTH } from "@/lib/coffee/types";
 import type {
@@ -235,7 +238,10 @@ export default async function StoreAdminPage({
       ]}
       actions={
         <>
-          <a href={store.publicUrl} className="btn-primary text-center">
+          <a
+            href={buildInternalHrefFromPublicUrl(store.publicUrl)}
+            className="btn-primary text-center"
+          >
             Abrir vitrine
           </a>
           <Link href="/admin" className="btn-secondary text-center">

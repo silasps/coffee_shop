@@ -34,6 +34,15 @@ export function buildStorePublicUrl(storeSlug: string, locale: Locale = "pt") {
   return new URL(buildStoreBasePath(storeSlug, locale), siteUrl).toString();
 }
 
+export function buildInternalHrefFromPublicUrl(publicUrl: string) {
+  try {
+    const url = new URL(publicUrl);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return publicUrl;
+  }
+}
+
 export function replaceLocaleInPathname(pathname: string, locale: Locale) {
   const segments = pathname.split("/");
   const localeIndex = segments.findIndex(isLocaleSegment);

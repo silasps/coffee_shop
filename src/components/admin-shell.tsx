@@ -127,15 +127,15 @@ export function AdminShell({
         </header>
 
         {stats.length ? (
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {stats.map((stat) => (
-              <article key={stat.label} className="dashboard-stat">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+              <article key={stat.label} className="dashboard-stat px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
                   {stat.label}
                 </p>
-                <p className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{stat.value}</p>
+                <p className="mt-1 text-xl font-semibold leading-none text-[var(--espresso)]">{stat.value}</p>
                 {stat.helper ? (
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{stat.helper}</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{stat.helper}</p>
                 ) : null}
               </article>
             ))}

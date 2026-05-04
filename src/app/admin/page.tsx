@@ -10,7 +10,10 @@ import {
   markBillingPaidAction,
   markBillingReminderAction,
 } from "@/app/admin/actions";
-import { buildStoreAdminPath } from "@/lib/coffee/paths";
+import {
+  buildInternalHrefFromPublicUrl,
+  buildStoreAdminPath,
+} from "@/lib/coffee/paths";
 import { formatMoney } from "@/lib/coffee/i18n";
 import { getPlatformAdminDashboard } from "@/lib/coffee/service";
 import { STOREFRONT_SLOGAN_MAX_LENGTH } from "@/lib/coffee/types";
@@ -395,7 +398,10 @@ export default async function AdminPage({
                 <Link href={buildStoreAdminPath(store.slug)} className="btn-primary">
                   Abrir gestao
                 </Link>
-                <a href={store.publicUrl} className="btn-secondary">
+                <a
+                  href={buildInternalHrefFromPublicUrl(store.publicUrl)}
+                  className="btn-secondary"
+                >
                   Ver vitrine
                 </a>
               </div>

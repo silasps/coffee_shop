@@ -99,13 +99,26 @@ export function GlobalActionFeedback() {
       scheduleFallbackHide();
     };
 
+    const handleManualShow = () => {
+      show();
+      scheduleFallbackHide();
+    };
+
+    const handleManualHide = () => {
+      hide();
+    };
+
     document.addEventListener("click", handleClick, true);
     document.addEventListener("submit", handleSubmit, true);
+    window.addEventListener("global-action-feedback:show", handleManualShow);
+    window.addEventListener("global-action-feedback:hide", handleManualHide);
     window.addEventListener("pagehide", hide);
 
     return () => {
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("submit", handleSubmit, true);
+      window.removeEventListener("global-action-feedback:show", handleManualShow);
+      window.removeEventListener("global-action-feedback:hide", handleManualHide);
       window.removeEventListener("pagehide", hide);
       clearHideTimer();
       clearFallbackTimer();

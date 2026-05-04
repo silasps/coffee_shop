@@ -249,12 +249,12 @@ const categorySlugTranslations: Record<
   },
   "cold-teas-and-lemonade": {
     en: {
-      name: "Iced Teas & Lemonade",
-      description: "Sparkling, refreshing tea drinks and house lemonade.",
+      name: "Iced Teas",
+      description: "Refreshing shaken iced teas.",
     },
     es: {
-      name: "Tes Frios y Limonada",
-      description: "Bebidas refrescantes con te y limonada de la casa.",
+      name: "Tes Frios",
+      description: "Tes frios batidos y refrescantes.",
     },
   },
   sodas: {
@@ -269,22 +269,32 @@ const categorySlugTranslations: Record<
   },
   "cold-beverages": {
     en: {
-      name: "Cold Beverages",
-      description: "Bottled drinks, sodas, energy drinks, and chilled staples.",
+      name: "Soft Drinks",
+      description: "Bottled sodas, energy drinks, water, and chilled staples.",
     },
     es: {
-      name: "Bebidas Frias",
-      description: "Bebidas embotelladas, refrescos, energeticos y opciones frias.",
+      name: "Refrescos",
+      description: "Refrescos embotellados, energeticos, agua y opciones frias.",
     },
   },
   "juices-and-vitaminas": {
     en: {
-      name: "Juices & Smoothies",
-      description: "Fresh juices, fruit blends, and house smoothies.",
+      name: "Juices",
+      description: "Fresh juices, fruit blends, and house lemonade.",
     },
     es: {
-      name: "Zumos y Batidos",
-      description: "Zumos frescos, pulpas batidas y batidos de la casa.",
+      name: "Zumos",
+      description: "Zumos frescos, pulpas batidas y limonada de la casa.",
+    },
+  },
+  vitaminas: {
+    en: {
+      name: "Smoothies",
+      description: "Creamy fruit smoothies blended to order.",
+    },
+    es: {
+      name: "Batidos",
+      description: "Batidos cremosos de fruta preparados al momento.",
     },
   },
   "milkshakes-and-frappes": {
