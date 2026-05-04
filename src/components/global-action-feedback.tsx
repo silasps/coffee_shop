@@ -7,6 +7,10 @@ const CLICK_VISIBLE_MS = 950;
 const FALLBACK_HIDE_MS = 10000;
 
 function isActionControl(target: EventTarget | null) {
+  if (window.location.pathname.includes("/kiosk") || window.location.pathname.includes("/menu/")) {
+    return false;
+  }
+
   if (!(target instanceof Element)) {
     return false;
   }

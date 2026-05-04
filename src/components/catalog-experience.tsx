@@ -190,7 +190,7 @@ export function CatalogExperience({
   }, []);
 
   return (
-    <section className="site-shell mt-4 overflow-hidden">
+    <section data-global-action-feedback="off" className="site-shell mt-4 overflow-hidden">
       <div
         ref={toolbarRef}
         className="fixed left-1/2 z-40 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2 bg-transparent px-1 py-1"

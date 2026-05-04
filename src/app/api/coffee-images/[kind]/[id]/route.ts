@@ -1,13 +1,12 @@
-import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
 const ONE_DAY_SECONDS = 60 * 60 * 24;
 
-function parseDataImage(value: string | null) {
-  if (!value?.startsWith("data:image/")) {
-    return null;
-  }
+function notFoundImage() {
+  return new Response("Image not found", { status: 404 });
+}
 
+function parseDataImage(value: string) {
   const match = value.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
 
   if (!match) {
@@ -29,27 +28,50 @@ export async function GET(
   },
 ) {
   const { kind, id } = await params;
-  const imageUrl =
-    kind === "product"
-      ? (
-          await prisma.coffeeProduct.findUnique({
-            where: { id },
-            select: { imageUrl: true },
-          })
-        )?.imageUrl
-      : kind === "category"
-        ? (
-            await prisma.coffeeCatalogCategory.findUnique({
-              where: { id },
-              select: { sidebarImageUrl: true },
-            })
-          )?.sidebarImageUrl
-        : null;
+  let imageUrl: string | null | undefined = null;
 
-  const image = parseDataImage(imageUrl ?? null);
+  if (kind === "product") {
+    imageUrl = (
+      await prisma.coffeeProduct.findUnique({
+        where: { id },
+        select: { imageUrl: true },
+      })
+    )?.imageUrl;
+  } else if (kind === "category") {
+    const category = await prisma.coffeeCatalogCategory.findUnique({
+      where: { id },
+      select: {
+        sidebarImageUrl: true,
+        products: {
+          where: {
+            imageUrl: {
+              not: null,
+            },
+          },
+          orderBy: [{ sortOrder: "asc" }, { namePt: "asc" }],
+          select: { imageUrl: true },
+          take: 1,
+        },
+      },
+    });
+
+    imageUrl = category?.sidebarImageUrl ?? category?.products[0]?.imageUrl;
+  } else {
+    return notFoundImage();
+  }
+
+  if (!imageUrl) {
+    return notFoundImage();
+  }
+
+  if (!imageUrl.startsWith("data:image/")) {
+    return Response.redirect(imageUrl, 307);
+  }
+
+  const image = parseDataImage(imageUrl);
 
   if (!image) {
-    notFound();
+    return notFoundImage();
   }
 
   return new Response(image.bytes, {
