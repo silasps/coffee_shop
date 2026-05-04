@@ -46,12 +46,6 @@ const itemLabels: Record<Locale, string> = {
   es: "productos",
 };
 
-const cancelLabels: Record<Locale, string> = {
-  pt: "Cancelar",
-  en: "Cancel",
-  es: "Cancelar",
-};
-
 export function CartDrawer({
   locale,
   storeSlug = DEFAULT_STORE_SLUG,
@@ -60,19 +54,18 @@ export function CartDrawer({
   docked = false,
 }: CartDrawerProps) {
   const [open, setOpen] = useState(false);
-  const { items, itemCount, subtotal, removeItem, updateQuantity, setItemNotes, clear } = useCart();
+  const { items, itemCount, subtotal, removeItem, updateQuantity, setItemNotes } = useCart();
   const dictionary = getDictionary(locale);
   const hasItems = itemCount > 0;
   const confirmLabel = confirmLabels[locale];
   const modalTitle = modalTitles[locale];
   const addMoreLabel = addMoreLabels[locale];
   const removeLabel = removeLabels[locale];
-  const cancelLabel = cancelLabels[locale];
   const itemLabel = itemLabels[locale];
   const checkoutHref = buildStorePath(storeSlug, locale, "/checkout");
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !hasItems) {
       return;
     }
 
@@ -82,20 +75,24 @@ export function CartDrawer({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [open]);
+  }, [open, hasItems]);
+
+  if (!hasItems) {
+    return null;
+  }
 
   return (
     <>
       {docked ? (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-[rgba(255,255,255,0.3)] bg-[rgba(255,249,244,0.9)] shadow-[0_-18px_44px_rgba(61,34,23,0.16)] backdrop-blur-xl">
-          <div className="mx-auto w-[min(1280px,calc(100vw-24px))] py-2">
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto w-[min(420px,calc(100vw-32px))]">
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="flex min-h-12 w-full items-center justify-between gap-3 rounded-[14px] bg-[var(--brand)] px-3.5 py-2 text-left text-white shadow-[0_10px_22px_rgba(227,106,47,0.22)]"
+              className="flex min-h-11 w-full items-center justify-between gap-3 rounded-full border border-white/50 bg-[rgba(61,34,23,0.86)] px-4 py-2 text-left text-white shadow-[0_12px_28px_rgba(61,34,23,0.2)] backdrop-blur-xl"
             >
               <span className="inline-flex min-w-0 items-center gap-2.5 font-semibold">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/16">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/14">
                   <svg
                     aria-hidden="true"
                     viewBox="0 0 24 24"
@@ -112,7 +109,7 @@ export function CartDrawer({
                   </svg>
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm leading-tight sm:text-base">
+                  <span className="block text-xs leading-tight sm:text-sm">
                     {dictionary.cartTitle}
                   </span>
                   <span
@@ -123,58 +120,10 @@ export function CartDrawer({
                   </span>
                 </span>
               </span>
-              <span className="shrink-0 text-right text-[13px] font-semibold sm:text-base">
-                {dictionary.subtotal}: {formatMoney(subtotal, locale)}
+              <span className="shrink-0 rounded-full bg-[#f4cf3d] px-3 py-1 text-right text-xs font-semibold text-[var(--espresso)] sm:text-sm">
+                {formatMoney(subtotal, locale)}
               </span>
             </button>
-
-            <div className="mt-1.5 grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={clear}
-                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[10px] bg-[var(--brand)] px-3 py-1.5 text-[11px] font-semibold uppercase text-white shadow-[0_7px_14px_rgba(227,106,47,0.18)] disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs"
-                disabled={!hasItems}
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
-                {cancelLabel}
-              </button>
-              <Link
-                href={checkoutHref}
-                aria-disabled={!hasItems}
-                tabIndex={hasItems ? undefined : -1}
-                className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[10px] px-3 py-1.5 text-center text-[11px] font-semibold uppercase text-white shadow-[0_7px_14px_rgba(149,89,92,0.18)] sm:text-xs ${
-                  hasItems
-                    ? "bg-[var(--tone-berry)]"
-                    : "pointer-events-none bg-[rgba(149,89,92,0.42)]"
-                }`}
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-                {confirmLabel}
-              </Link>
-            </div>
           </div>
         </div>
       ) : (
@@ -291,7 +240,13 @@ export function CartDrawer({
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => updateQuantity(item.slug, item.quantity - 1)}
+                              onClick={() => {
+                                if (itemCount === 1 && item.quantity === 1) {
+                                  setOpen(false);
+                                }
+
+                                updateQuantity(item.slug, item.quantity - 1);
+                              }}
                               className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-lg"
                             >
                               -
@@ -310,7 +265,13 @@ export function CartDrawer({
 
                           <button
                             type="button"
-                            onClick={() => removeItem(item.slug)}
+                            onClick={() => {
+                              if (itemCount === item.quantity) {
+                                setOpen(false);
+                              }
+
+                              removeItem(item.slug);
+                            }}
                             aria-label={`${removeLabel} ${item.name}`}
                             className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--brand-strong)]"
                           >

@@ -18,6 +18,7 @@ import {
   markBillingInvoicePaid,
   markBillingInvoiceReminder,
   updateCatalogProduct,
+  updateCatalogSection,
   updateCategoryVisuals,
   updateStorefrontSettings,
   updateSupplier,
@@ -163,6 +164,27 @@ export async function updateCategoryVisualAction(formData: FormData) {
     descriptionEs: parseOptionalString(formData.get("descriptionEs")),
     accentColor: formData.get("accentColor")?.toString() ?? "",
     sidebarImageUrl: formData.get("sidebarImageUrl")?.toString() ?? "",
+    isActive: formData.get("isActive") === "on",
+  });
+
+  revalidateStorePaths(storeSlug);
+}
+
+export async function updateCatalogSectionAction(formData: FormData) {
+  const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+
+  await updateCatalogSection({
+    storeSlug,
+    area:
+      (formData.get("area")?.toString() as "foods" | "hot-drinks" | "cold-drinks") ??
+      "foods",
+    namePt: formData.get("namePt")?.toString() ?? "",
+    nameEn: parseOptionalString(formData.get("nameEn")),
+    nameEs: parseOptionalString(formData.get("nameEs")),
+    descriptionPt: parseOptionalString(formData.get("descriptionPt")),
+    descriptionEn: parseOptionalString(formData.get("descriptionEn")),
+    descriptionEs: parseOptionalString(formData.get("descriptionEs")),
+    imageUrl: formData.get("imageUrl")?.toString() ?? "",
     isActive: formData.get("isActive") === "on",
   });
 

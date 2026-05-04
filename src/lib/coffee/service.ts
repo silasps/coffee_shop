@@ -31,6 +31,7 @@ import { prisma } from "@/lib/prisma";
 import { STOREFRONT_SLOGAN_MAX_LENGTH } from "@/lib/coffee/types";
 import type {
   CatalogDashboardCategory,
+  CatalogDashboardSection,
   CatalogDashboardProduct,
   BillingInvoiceSummary,
   CheckoutPayload,
@@ -61,6 +62,42 @@ const reverseAreaMap: Record<CoffeeMenuArea, MenuAreaSlug> = {
   FOODS: "foods",
   HOT_DRINKS: "hot-drinks",
   COLD_DRINKS: "cold-drinks",
+};
+
+const defaultCatalogSections: Record<MenuAreaSlug, Omit<CatalogDashboardSection, "area">> = {
+  foods: {
+    namePt: "Comidas",
+    nameEn: "Foods",
+    nameEs: "Comidas",
+    descriptionPt: null,
+    descriptionEn: null,
+    descriptionEs: null,
+    imageUrl: null,
+    sortOrder: 30,
+    isActive: true,
+  },
+  "hot-drinks": {
+    namePt: "Bebidas quentes",
+    nameEn: "Hot drinks",
+    nameEs: "Bebidas calientes",
+    descriptionPt: null,
+    descriptionEn: null,
+    descriptionEs: null,
+    imageUrl: null,
+    sortOrder: 10,
+    isActive: true,
+  },
+  "cold-drinks": {
+    namePt: "Bebidas geladas",
+    nameEn: "Cold drinks",
+    nameEs: "Bebidas frias",
+    descriptionPt: null,
+    descriptionEn: null,
+    descriptionEs: null,
+    imageUrl: null,
+    sortOrder: 20,
+    isActive: true,
+  },
 };
 
 const shouldSkipDatabase = process.env.COFFEE_SHOP_SKIP_DB === "1";
@@ -272,6 +309,42 @@ function buildCategoryLocalizedFields(input: {
       es: cleanOptionalString(input.descriptionEs),
     },
     { kind: "category-description", slug: input.slug },
+  );
+
+  return {
+    namePt: name.pt ?? input.namePt.trim(),
+    nameEn: name.en,
+    nameEs: name.es,
+    descriptionPt: description.pt,
+    descriptionEn: description.en,
+    descriptionEs: description.es,
+  };
+}
+
+function buildSectionLocalizedFields(input: {
+  area: MenuAreaSlug;
+  namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
+  descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
+}) {
+  const name = fillLocalizedText(
+    {
+      pt: input.namePt.trim(),
+      en: cleanOptionalString(input.nameEn),
+      es: cleanOptionalString(input.nameEs),
+    },
+    { kind: "category-name", slug: input.area },
+  );
+  const description = fillLocalizedText(
+    {
+      pt: cleanOptionalString(input.descriptionPt),
+      en: cleanOptionalString(input.descriptionEn),
+      es: cleanOptionalString(input.descriptionEs),
+    },
+    { kind: "category-description", slug: input.area },
   );
 
   return {
@@ -1134,6 +1207,13 @@ function buildFallbackCategories(): CatalogDashboardCategory[] {
   }));
 }
 
+function buildFallbackSections(): CatalogDashboardSection[] {
+  return (Object.keys(defaultCatalogSections) as MenuAreaSlug[]).map((area) => ({
+    area,
+    ...defaultCatalogSections[area],
+  }));
+}
+
 function buildFallbackDashboard(storeSlug = DEFAULT_STORE_SLUG): OperationsDashboard {
   return {
     isLive: false,
@@ -1141,6 +1221,7 @@ function buildFallbackDashboard(storeSlug = DEFAULT_STORE_SLUG): OperationsDashb
     orders: demoOrders,
     products: buildFallbackProducts(),
     categories: buildFallbackCategories(),
+    sections: buildFallbackSections(),
     inventoryMovements: demoInventoryMovements.map((movement) => ({
       ...movement,
       supplierName: null,
@@ -1983,6 +2064,9 @@ export async function getOperationsDashboard(
           },
           orderBy: [{ sortOrder: "asc" }, { namePt: "asc" }],
         },
+        catalogSections: {
+          orderBy: [{ sortOrder: "asc" }, { namePt: "asc" }],
+        },
         inventoryMovements: {
           include: {
             supplier: {
@@ -2057,6 +2141,24 @@ export async function getOperationsDashboard(
         highlightEs: product.highlightEs,
         sortOrder: product.sortOrder,
       })),
+      sections: (Object.keys(defaultCatalogSections) as MenuAreaSlug[]).map<CatalogDashboardSection>((area) => {
+        const section = store.catalogSections.find((item) => reverseAreaMap[item.area] === area);
+        const defaults = defaultCatalogSections[area];
+
+        return {
+          id: section?.id,
+          area,
+          namePt: section?.namePt ?? defaults.namePt,
+          nameEn: section?.nameEn ?? defaults.nameEn,
+          nameEs: section?.nameEs ?? defaults.nameEs,
+          descriptionPt: section?.descriptionPt ?? defaults.descriptionPt,
+          descriptionEn: section?.descriptionEn ?? defaults.descriptionEn,
+          descriptionEs: section?.descriptionEs ?? defaults.descriptionEs,
+          imageUrl: section?.imageUrl ?? defaults.imageUrl,
+          sortOrder: section?.sortOrder ?? defaults.sortOrder,
+          isActive: section?.isActive ?? defaults.isActive,
+        };
+      }),
       categories: store.categories.map<CatalogDashboardCategory>((category) => ({
         id: category.id,
         slug: category.slug,
@@ -2388,6 +2490,59 @@ export async function updateCategoryVisuals(input: {
       ...localized,
       accentColor: cleanOptionalString(input.accentColor),
       sidebarImageUrl: cleanOptionalString(input.sidebarImageUrl),
+      ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
+    },
+  });
+}
+
+export async function updateCatalogSection(input: {
+  storeSlug: string;
+  area: MenuAreaSlug;
+  namePt?: string;
+  nameEn?: string;
+  nameEs?: string;
+  descriptionPt?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+}) {
+  const store = await getStoreOrThrow(input.storeSlug);
+  const defaults = defaultCatalogSections[input.area];
+  const nextName = input.namePt?.trim() || defaults.namePt;
+
+  if (!nextName) {
+    throw new Error("Informe o nome da seção.");
+  }
+
+  const localized = buildSectionLocalizedFields({
+    area: input.area,
+    namePt: nextName,
+    nameEn: input.nameEn,
+    nameEs: input.nameEs,
+    descriptionPt: input.descriptionPt,
+    descriptionEn: input.descriptionEn,
+    descriptionEs: input.descriptionEs,
+  });
+
+  return prisma.coffeeCatalogSection.upsert({
+    where: {
+      storeId_area: {
+        storeId: store.id,
+        area: areaMap[input.area],
+      },
+    },
+    create: {
+      storeId: store.id,
+      area: areaMap[input.area],
+      ...localized,
+      imageUrl: cleanOptionalString(input.imageUrl),
+      sortOrder: defaults.sortOrder,
+      isActive: typeof input.isActive === "boolean" ? input.isActive : true,
+    },
+    update: {
+      ...localized,
+      imageUrl: cleanOptionalString(input.imageUrl),
       ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
     },
   });

@@ -389,7 +389,7 @@ export function ProductArt({
 
       {hasPhoto ? (
         <div
-          className="absolute inset-0 scale-[1.03]"
+          className="absolute inset-0"
           style={{
             backgroundImage: toBackgroundImage(imageUrl as string),
             backgroundPosition: "center",
@@ -428,7 +428,7 @@ export function SectionArt({
 
       {hasPhoto ? (
         <div
-          className="absolute inset-0 scale-110"
+          className="absolute inset-0"
           style={{
             backgroundImage: toBackgroundImage(imageUrl as string),
             backgroundPosition: "center",

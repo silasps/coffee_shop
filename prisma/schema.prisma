@@ -611,6 +611,7 @@ model CoffeeShopStore {
 
   clientAccount      CoffeeClientAccount?   @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   categories         CoffeeCatalogCategory[]
+  catalogSections    CoffeeCatalogSection[]
   products           CoffeeProduct[]
   orders             CoffeeOrder[]
   inventoryMovements CoffeeInventoryMovement[]
@@ -623,6 +624,31 @@ model CoffeeShopStore {
 
   @@index([clientAccountId, isActive])
   @@map("coffee_shop_stores")
+}
+
+model CoffeeCatalogSection {
+  id      String @id @default(cuid())
+  storeId String
+
+  area          CoffeeMenuArea
+  namePt        String
+  nameEn        String?
+  nameEs        String?
+  descriptionPt String?
+  descriptionEn String?
+  descriptionEs String?
+  imageUrl      String?
+  sortOrder     Int     @default(0)
+  isActive      Boolean @default(true)
+
+  store CoffeeShopStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, area])
+  @@index([storeId, sortOrder])
+  @@map("coffee_shop_catalog_sections")
 }
 
 model CoffeeTeamMember {

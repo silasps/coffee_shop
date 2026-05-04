@@ -1,17 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useDeferredValue, useRef, startTransition, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { CartDrawer } from "@/components/cart-drawer";
-import { ProductArt, SectionArt } from "@/components/product-art";
+import { ProductArt } from "@/components/product-art";
 import {
-  areaHeroBackgrounds,
   formatMoney,
   getAreaName,
   getDictionary,
 } from "@/lib/coffee/i18n";
-import { buildStorePath, DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
+import { DEFAULT_STORE_SLUG } from "@/lib/coffee/paths";
 import type {
   Locale,
   MenuAreaSlug,
@@ -97,7 +95,7 @@ export function CatalogExperience({
   const dictionary = getDictionary(locale);
   const copy = microcopy[locale];
   const [selectedArea, setSelectedArea] = useState<MenuAreaSlug>(initialArea);
-  const [selectedFoodCategory, setSelectedFoodCategory] = useState<string | null>(null);
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [headerHeight, setHeaderHeight] = useState(FALLBACK_HEADER_HEIGHT);
   const [toolbarHeight, setToolbarHeight] = useState(FALLBACK_TOOLBAR_HEIGHT);
@@ -121,16 +119,8 @@ export function CatalogExperience({
   const drinksAreas = orderedCatalog.filter((entry) => entry.area !== "foods");
   const foodsArea = orderedCatalog.find((entry) => entry.area === "foods") ?? null;
   const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea, locale) : [];
-  const activeFoodCategory = selectedFoodCategory ?? foodsArea?.categories[0]?.slug ?? null;
-  const activeFoodCategoryData =
-    foodsArea?.categories.find((category) => category.slug === activeFoodCategory) ?? null;
-  const displayArea =
-    currentArea === "foods" && activeArea && activeFoodCategoryData
-      ? {
-          ...activeArea,
-          categories: [activeFoodCategoryData],
-        }
-      : activeArea;
+  const selectedCategory =
+    activeArea?.categories.find((category) => category.slug === selectedCategorySlug) ?? null;
 
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
@@ -142,18 +132,17 @@ export function CatalogExperience({
   const isSearchMode = normalizedQuery.length > 0;
   const contentAreas = isSearchMode
     ? searchResults
-    : displayArea
-      ? [displayArea]
+    : activeArea
+      ? [activeArea]
       : [];
 
   const headerTitle = isSearchMode
     ? copy.searchResultsTitle
-    : getAreaName(currentArea, locale);
+    : selectedCategory?.name ?? getAreaName(currentArea, locale);
   const toolbarTop = headerHeight + 6;
   const stickyTop = toolbarTop + toolbarHeight + 12;
   const contentSpacerHeight = toolbarHeight + 8;
-  const bottomDockHeight = 108;
-  const viewportPanelHeight = `calc(100dvh - ${stickyTop + bottomDockHeight}px)`;
+  const viewportPanelHeight = `calc(100dvh - ${stickyTop + 14}px)`;
 
   const resetContentScroll = () => {
     contentRef.current?.scrollTo({ top: 0, left: 0 });
@@ -201,7 +190,7 @@ export function CatalogExperience({
   }, []);
 
   return (
-    <section className="site-shell mt-4 pb-28">
+    <section className="site-shell mt-4 overflow-hidden">
       <div
         ref={toolbarRef}
         className="fixed left-1/2 z-40 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2 bg-transparent px-1 py-1"
@@ -222,28 +211,33 @@ export function CatalogExperience({
 
       <div style={{ height: `${contentSpacerHeight}px` }} />
 
-      <div className="grid grid-cols-[94px_minmax(0,1fr)] gap-3 sm:grid-cols-[102px_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[120px_minmax(0,1fr)] lg:gap-5">
-        <aside className="sticky self-start" style={{ top: `${stickyTop}px` }}>
+      <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-3 sm:grid-cols-[128px_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[156px_minmax(0,1fr)] lg:gap-5">
+        <aside className="sticky self-start overflow-hidden" style={{ top: `${stickyTop}px` }}>
           <nav
-            className="no-scrollbar flex flex-col gap-5 overflow-y-auto pr-1"
+            className="no-scrollbar flex flex-col gap-5 overflow-y-auto rounded-[32px] bg-[rgba(255,253,249,0.92)] px-3 py-5 sm:px-4"
             style={{ maxHeight: viewportPanelHeight }}
           >
             <SidebarGroup title={sidebarHeadings[locale].drinks}>
-              {drinksAreas.map((areaData) => (
-                <SidebarTile
-                  key={areaData.area}
-                  label={getAreaName(areaData.area, locale)}
-                  area={areaData.area}
-                  imageUrl={getAreaPreviewImage(areaData)}
-                  active={currentArea === areaData.area}
-                  onClick={() => {
-                    resetContentScroll();
-                    startTransition(() => {
-                      setSelectedArea(areaData.area);
-                    });
-                  }}
-                />
-              ))}
+              {drinksAreas.map((areaData) => {
+                const label = getAreaName(areaData.area, locale);
+
+                return (
+                  <SidebarTile
+                    key={areaData.area}
+                    label={label}
+                    area={areaData.area}
+                    imageUrl={getAreaPreviewImage(areaData)}
+                    active={currentArea === areaData.area}
+                    onClick={() => {
+                      resetContentScroll();
+                      startTransition(() => {
+                        setSelectedArea(areaData.area);
+                        setSelectedCategorySlug(null);
+                      });
+                    }}
+                  />
+                );
+              })}
             </SidebarGroup>
 
             {foodsArea ? (
@@ -254,15 +248,15 @@ export function CatalogExperience({
                       label={item.label}
                       area="foods"
                       imageUrl={item.imageUrl}
-                      active={currentArea === "foods" && activeFoodCategory === item.slug}
+                      active={currentArea === "foods" && selectedCategorySlug === item.slug}
                       onClick={() => {
-                        resetContentScroll();
-                        startTransition(() => {
-                          setSelectedArea("foods");
-                          setSelectedFoodCategory(item.slug);
-                        });
-                      }}
-                    />
+                      resetContentScroll();
+                      startTransition(() => {
+                        setSelectedArea("foods");
+                        setSelectedCategorySlug(item.slug);
+                      });
+                    }}
+                  />
                   </div>
                 ))}
               </SidebarGroup>
@@ -278,12 +272,25 @@ export function CatalogExperience({
             <div className="flex min-w-0 flex-1 flex-col">
               <div
                 className="shrink-0 overflow-hidden border-b border-[rgba(72,46,34,0.12)] bg-[rgba(255,247,240,0.94)] backdrop-blur-sm"
-                style={isSearchMode ? undefined : { backgroundImage: areaHeroBackgrounds[currentArea] }}
               >
-                <div className="px-4 py-3 sm:px-5 sm:py-3.5">
-                  <h1 className="display-title text-2xl font-semibold leading-none text-[var(--espresso)] sm:text-3xl">
+                <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center px-4 py-3 sm:px-5 sm:py-3.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetContentScroll();
+                      setSelectedCategorySlug(null);
+                    }}
+                    className={`text-3xl font-semibold leading-none text-[var(--espresso)] ${
+                      selectedCategory && !isSearchMode ? "opacity-100" : "pointer-events-none opacity-0"
+                    }`}
+                    aria-label="Voltar"
+                  >
+                    {"<"}
+                  </button>
+                  <h1 className="display-title text-center text-2xl font-semibold leading-none text-[var(--espresso)] sm:text-3xl">
                     {headerTitle}
                   </h1>
+                  <span aria-hidden="true" />
                 </div>
               </div>
 
@@ -314,19 +321,19 @@ export function CatalogExperience({
                         </div>
 
                         {areaData.categories.map((category) => (
-                          <CategorySection
+                          <ProductList
                             key={category.slug}
                             locale={locale}
                             category={category}
-                            storeSlug={storeSlug}
                           />
                         ))}
                       </div>
                     ))
                   ) : (
                     <div className="space-y-3">
-                      {contentAreas[0].categories.filter((category) => category.products.length > 0)
-                        .length === 0 ? (
+                      {selectedCategory ? (
+                        <ProductList locale={locale} category={selectedCategory} />
+                      ) : contentAreas[0].categories.length === 0 ? (
                         <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/70 px-5 py-8 text-center">
                           <p className="text-base font-semibold text-[var(--espresso)]">
                             {copy.noResultsTitle}
@@ -336,16 +343,13 @@ export function CatalogExperience({
                           </p>
                         </div>
                       ) : (
-                        contentAreas[0].categories
-                          .filter((category) => category.products.length > 0)
-                          .map((category) => (
-                            <CategorySection
-                              key={category.slug}
-                              locale={locale}
-                              category={category}
-                              storeSlug={storeSlug}
-                            />
-                          ))
+                        <CategoryTileGrid
+                          categories={contentAreas[0].categories}
+                          onSelect={(categorySlug) => {
+                            resetContentScroll();
+                            setSelectedCategorySlug(categorySlug);
+                          }}
+                        />
                       )}
                     </div>
                   )}
@@ -370,10 +374,10 @@ function SidebarGroup({
 }) {
   return (
     <div className="space-y-2">
-      <p className="border-b border-[rgba(72,46,34,0.16)] pb-1 text-center text-[13px] font-semibold text-[var(--espresso)]">
+      <p className="pb-1 text-left text-xl font-medium leading-none text-black sm:text-2xl">
         {title}
       </p>
-      <div className="flex flex-col items-center gap-2">{children}</div>
+      <div className="flex flex-col items-center gap-3">{children}</div>
     </div>
   );
 }
@@ -402,7 +406,7 @@ function SidebarTile({
           : "border-[rgba(90,52,37,0.2)] shadow-[0_10px_20px_rgba(61,34,23,0.12)]"
       }`}
     >
-      <SectionArt label={label} area={area} imageUrl={imageUrl} />
+      <SectionCardArt label={label} area={area} imageUrl={imageUrl} />
       <span
         className="display-title relative z-10 block w-full break-words text-[12px] leading-[0.96] text-white sm:text-[13px]"
         style={{ textShadow: "0 3px 14px rgba(0, 0, 0, 0.5)" }}
@@ -413,27 +417,86 @@ function SidebarTile({
   );
 }
 
-function CategorySection({
+function SectionCardArt({
+  label,
+  area,
+  imageUrl,
+}: {
+  label: string;
+  area?: MenuAreaSlug;
+  imageUrl?: string | null;
+}) {
+  if (imageUrl) {
+    return (
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url("${imageUrl.replace(/"/g, '\\"')}")` }}
+      >
+        <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(28,16,10,0.04),rgba(28,16,10,0.5))]" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="absolute inset-0 overflow-hidden">
+      <ProductArt title={label} tone="cream" size="column" area={area} imageUrl={null} />
+      <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(28,16,10,0.08),rgba(28,16,10,0.56))]" />
+    </span>
+  );
+}
+
+function CategoryTileGrid({
+  categories,
+  onSelect,
+}: {
+  categories: PublicCategory[];
+  onSelect: (categorySlug: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4">
+      {categories.map((category) => (
+        <button
+          key={category.slug}
+          type="button"
+          onClick={() => onSelect(category.slug)}
+          className="relative flex aspect-square min-h-[116px] items-end justify-center overflow-hidden rounded-[24px] text-center text-base font-medium leading-tight text-white transition hover:-translate-y-[1px] sm:min-h-[132px]"
+        >
+          <SectionCardArt
+            label={category.name}
+            area={category.area}
+            imageUrl={getCategoryPreviewImage(category)}
+          />
+          <span
+            className="display-title relative z-10 flex min-h-12 items-center justify-center px-3 py-3 text-lg leading-none"
+            style={{ textShadow: "0 3px 14px rgba(0, 0, 0, 0.5)" }}
+          >
+            {category.name}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProductList({
   locale,
   category,
-  storeSlug,
 }: {
   locale: Locale;
   category: PublicCategory;
-  storeSlug: string;
 }) {
   return (
     <section
       aria-label={category.name}
-      className="overflow-hidden rounded-[30px] border border-[var(--line)] bg-[rgba(255,252,248,0.92)] shadow-[0_16px_32px_rgba(61,34,23,0.06)]"
+      className="overflow-hidden"
     >
-      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3">
+      <div className="grid gap-4 p-3 sm:grid-cols-2 sm:p-5 xl:grid-cols-2">
         {category.products.map((product) => (
           <ProductRow
             key={product.slug}
             locale={locale}
             product={product}
-            storeSlug={storeSlug}
           />
         ))}
       </div>
@@ -444,29 +507,14 @@ function CategorySection({
 function ProductRow({
   locale,
   product,
-  storeSlug,
 }: {
   locale: Locale;
   product: PublicProduct;
-  storeSlug: string;
 }) {
-  const router = useRouter();
-  const dictionary = getDictionary(locale);
-  const productHref = buildStorePath(storeSlug, locale, `/produto/${product.slug}`);
-
   return (
     <article
-      role="link"
-      tabIndex={0}
-      aria-label={`${dictionary.detailLabel}: ${product.name}`}
-      onClick={() => router.push(productHref)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          router.push(productHref);
-        }
-      }}
-      className="cursor-pointer rounded-[26px] border border-[rgba(72,46,34,0.1)] bg-white p-3 shadow-[0_12px_28px_rgba(61,34,23,0.05)] transition hover:-translate-y-[1px] sm:p-4"
+      aria-label={product.name}
+      className="overflow-hidden rounded-[24px] bg-[#d9d9d9] shadow-[0_10px_20px_rgba(61,34,23,0.1)] transition hover:-translate-y-[1px]"
     >
       <div className="flex h-full flex-col">
         <div className="relative">
@@ -484,24 +532,22 @@ function ProductRow({
           ) : null}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <h3 className="mt-4 text-base font-semibold leading-5 text-[var(--espresso)] sm:text-lg">
+        <div className="flex min-w-0 flex-1 flex-col p-4">
+          <h3 className="text-xl font-semibold leading-6 text-black sm:text-2xl">
             {product.name}
           </h3>
 
-          <p className="mt-2 text-[13px] leading-5 text-[var(--muted)]">
+          <p className="mt-2 text-base leading-6 text-black">
             {product.description}
           </p>
 
           <div className="mt-4">
-            <p className="text-[22px] font-semibold leading-none text-[var(--espresso)]">
+            <p className="text-2xl font-semibold leading-none text-black">
               {formatMoney(product.price, locale)}
             </p>
 
             <div
               className="mt-4"
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
             >
                     <AddToCartButton
                       locale={locale}

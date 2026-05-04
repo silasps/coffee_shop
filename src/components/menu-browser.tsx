@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useDeferredValue, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { ProductArt } from "@/components/product-art";
@@ -96,18 +95,9 @@ export function MenuBrowser({ locale, areaData }: MenuBrowserProps) {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm text-[var(--muted)]">{dictionary.detailLabel}</p>
-                        <p className="text-xl font-semibold text-[var(--espresso)]">
-                          {formatMoney(product.price, locale)}
-                        </p>
-                      </div>
-                      <Link
-                        href={`/${locale}/produto/${product.slug}`}
-                        className="rounded-full border border-[var(--line)] px-4 py-2 text-sm font-semibold text-[var(--espresso)]"
-                      >
-                        {dictionary.detailLabel}
-                      </Link>
+                      <p className="text-xl font-semibold text-[var(--espresso)]">
+                        {formatMoney(product.price, locale)}
+                      </p>
                     </div>
 
                     <AddToCartButton

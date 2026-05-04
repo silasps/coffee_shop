@@ -147,6 +147,20 @@ export type CatalogDashboardCategory = {
   productCount: number;
 };
 
+export type CatalogDashboardSection = {
+  id?: string;
+  area: MenuAreaSlug;
+  namePt: string;
+  nameEn?: string | null;
+  nameEs?: string | null;
+  descriptionPt?: string | null;
+  descriptionEn?: string | null;
+  descriptionEs?: string | null;
+  imageUrl?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
 export type SupplierRecord = {
   id: string;
   name: string;
@@ -192,6 +206,7 @@ export type OperationsDashboard = {
   orders: OrderSnapshot[];
   products: CatalogDashboardProduct[];
   categories: CatalogDashboardCategory[];
+  sections: CatalogDashboardSection[];
   inventoryMovements: InventoryMovementRecord[];
   financeEntries: FinanceEntryRecord[];
   suppliers: SupplierRecord[];

@@ -525,12 +525,13 @@ export default async function StoreAdminPage({
       ) : null}
 
       {activeSection === "products" ? (
-        <AdminProductsPanel
-          storeSlug={store.slug}
-          catalog={orderedCatalog}
-          categories={dashboard.categories}
-          products={dashboard.products}
-          initialArea={requestedArea}
+                <AdminProductsPanel
+                  storeSlug={store.slug}
+                  catalog={orderedCatalog}
+                  categories={dashboard.categories}
+                  sections={dashboard.sections}
+                  products={dashboard.products}
+                  initialArea={requestedArea}
           initialFoodCategorySlug={selectedFoodCategorySlug}
         />
       ) : null}
