@@ -20,11 +20,12 @@ type AdminStat = {
 type AdminShellProps = {
   badge: string;
   title: string;
-  description: string;
+  description?: string;
   navItems: AdminNavItem[];
   activeKey: string;
   stats?: AdminStat[];
   actions?: ReactNode;
+  productMode?: boolean;
   children: ReactNode;
 };
 
@@ -48,6 +49,7 @@ export function AdminShell({
   activeKey,
   stats = [],
   actions,
+  productMode = false,
   children,
 }: AdminShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,20 +68,22 @@ export function AdminShell({
   }, [menuOpen]);
 
   return (
-    <div className="site-shell px-0 py-6 md:py-8">
-      <div className="space-y-5">
-        <header className="card-panel overflow-hidden">
-          <div className="flex flex-col gap-5 p-5 md:p-6">
+    <div className={productMode ? "mx-auto w-full max-w-[680px] bg-[#f8eee3] px-3 py-3" : "site-shell px-0 py-6 md:py-8"}>
+      <div className={productMode ? "space-y-3" : "space-y-5"}>
+        <header className={productMode ? "overflow-hidden bg-[#ff972e]" : "card-panel overflow-hidden"}>
+          <div className={productMode ? "flex flex-col gap-3 px-5 py-4" : "flex flex-col gap-5 p-5 md:p-6"}>
             <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 space-y-3">
-                <span className="pill">{badge}</span>
-                <div className="space-y-2">
-                  <h1 className="display-title text-3xl leading-none text-[var(--espresso)] md:text-4xl">
+              <div className={productMode ? "min-w-0" : "min-w-0 space-y-3"}>
+                <span className={productMode ? "text-2xl font-normal leading-none text-white" : "pill"}>{badge}</span>
+                <div className={productMode ? "mt-6 pl-9" : "space-y-2"}>
+                  <h1 className={productMode ? "text-5xl font-normal leading-none text-white" : "display-title text-3xl leading-none text-[var(--espresso)] md:text-4xl"}>
                     {title}
                   </h1>
-                  <p className="max-w-3xl text-sm leading-7 text-[var(--muted)] md:text-base">
-                    {description}
-                  </p>
+                  {description && !productMode ? (
+                    <p className="max-w-3xl text-sm leading-7 text-[var(--muted)] md:text-base">
+                      {description}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -87,21 +91,21 @@ export function AdminShell({
                 {actions ? <div className="hidden flex-wrap gap-3 lg:flex">{actions}</div> : null}
                 <button
                   type="button"
-                  className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--line)] bg-white/80 text-[var(--espresso)] shadow-[0_10px_24px_rgba(61,34,23,0.08)] lg:hidden"
+                  className={productMode ? "inline-flex h-12 w-12 items-center justify-center text-black lg:hidden" : "inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--line)] bg-white/80 text-[var(--espresso)] shadow-[0_10px_24px_rgba(61,34,23,0.08)] lg:hidden"}
                   aria-expanded={menuOpen}
                   aria-label={menuOpen ? "Fechar menu" : "Abrir menu"}
                   onClick={() => setMenuOpen((open) => !open)}
                 >
                   <span className="flex flex-col gap-1.5">
-                    <span className="block h-0.5 w-5 rounded-full bg-current" />
-                    <span className="block h-0.5 w-5 rounded-full bg-current" />
-                    <span className="block h-0.5 w-5 rounded-full bg-current" />
+                    <span className={productMode ? "block h-1 w-8 bg-current" : "block h-0.5 w-5 rounded-full bg-current"} />
+                    <span className={productMode ? "block h-1 w-8 bg-current" : "block h-0.5 w-5 rounded-full bg-current"} />
+                    <span className={productMode ? "block h-1 w-8 bg-current" : "block h-0.5 w-5 rounded-full bg-current"} />
                   </span>
                 </button>
               </div>
             </div>
 
-            {actions ? <div className="flex flex-wrap gap-3 lg:hidden">{actions}</div> : null}
+            {actions && !productMode ? <div className="flex flex-wrap gap-3 lg:hidden">{actions}</div> : null}
 
             <nav className="hidden flex-wrap gap-2 border-t border-[var(--line)] pt-4 lg:flex">
               {navItems.map((item) => {

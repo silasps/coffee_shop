@@ -16,10 +16,7 @@ import {
   updateSupplierAction,
 } from "@/app/admin/actions";
 import { formatMoney } from "@/lib/coffee/i18n";
-import {
-  buildInternalHrefFromPublicUrl,
-  buildStoreAdminPath,
-} from "@/lib/coffee/paths";
+import { buildStoreAdminPath } from "@/lib/coffee/paths";
 import { getCatalog, getOperationsDashboard, getStorefront } from "@/lib/coffee/service";
 import { STOREFRONT_SLOGAN_MAX_LENGTH } from "@/lib/coffee/types";
 import type {
@@ -192,9 +189,9 @@ export default async function StoreAdminPage({
   return (
     <AdminShell
       badge="Gestão da cafeteria"
-      title={store.name}
-      description="Painel desktop-first para administrar vitrine, categorias, produtos, fornecedores e caixa sem depender de uma tela enorme."
+      title={activeSection === "products" ? "Produtos" : store.name}
       activeKey={activeSection}
+      productMode={activeSection === "products"}
       navItems={[
         {
           key: "overview",
@@ -230,20 +227,18 @@ export default async function StoreAdminPage({
           href: buildSectionHref(store.slug, "cash"),
         },
       ]}
-      stats={[
-        { label: "Produtos", value: dashboard.products.length },
-        { label: "Categorias", value: dashboard.categories.length },
-        { label: "Fornecedores", value: dashboard.suppliers.length },
-        { label: "Saldo", value: formatMoney(balance, "pt") },
-      ]}
+      stats={
+        activeSection === "products"
+          ? []
+          : [
+              { label: "Produtos", value: dashboard.products.length },
+              { label: "Categorias", value: dashboard.categories.length },
+              { label: "Fornecedores", value: dashboard.suppliers.length },
+              { label: "Saldo", value: formatMoney(balance, "pt") },
+            ]
+      }
       actions={
         <>
-          <a
-            href={buildInternalHrefFromPublicUrl(store.publicUrl)}
-            className="btn-primary text-center"
-          >
-            Abrir vitrine
-          </a>
           <Link href="/admin" className="btn-secondary text-center">
             Voltar para plataforma
           </Link>

@@ -215,6 +215,8 @@ export function ImageUploadField({
   name,
   label,
   defaultValue = "",
+  description,
+  previewClassName,
   cropAspectRatio = 4 / 3,
 }: ImageUploadFieldProps) {
   const inputId = useId();
@@ -376,20 +378,23 @@ export function ImageUploadField({
   }
 
   const thumbAspect = cropAspectRatio >= 1 ? "aspect-[4/3]" : "aspect-square";
+  const previewClass =
+    previewClassName ??
+    `w-16 ${thumbAspect} rounded-xl`;
 
   return (
     <>
       <input type="hidden" name={name} value={value} />
 
-      <div className="flex items-center gap-3">
+      <div className={previewClassName ? "grid gap-3" : "flex items-center gap-3"}>
         <div
-          className={`flex-shrink-0 w-16 ${thumbAspect} overflow-hidden rounded-xl border border-[var(--line)] bg-[rgba(255,252,247,0.92)]`}
+          className={`${previewClass} flex-shrink-0 overflow-hidden border border-[var(--line)] bg-[rgba(255,252,247,0.92)]`}
         >
           {value ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={value} alt={label} className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-full w-full items-center justify-center px-4 text-center">
               <svg
                 width="20"
                 height="20"
@@ -403,12 +408,16 @@ export function ImageUploadField({
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="M21 15l-5-5L5 21" />
               </svg>
+              {previewClassName ? (
+                <span className="ml-3 text-sm font-semibold text-[var(--espresso)]">{label}</span>
+              ) : null}
             </div>
           )}
         </div>
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--espresso)]">{label}</p>
+          {description ? <p className="mt-1 text-xs text-[var(--muted)]">{description}</p> : null}
           <div className="mt-1.5 flex flex-wrap gap-2">
             <label
               htmlFor={inputId}

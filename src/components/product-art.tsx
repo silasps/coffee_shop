@@ -6,7 +6,7 @@ type ArtTone = "amber" | "mocha" | "forest" | "berry" | "cream";
 type ProductArtProps = {
   title: string;
   tone: ArtTone;
-  size?: "default" | "compact" | "thumb" | "column";
+  size?: "default" | "compact" | "thumb" | "column" | "admin-card";
   area?: MenuAreaSlug;
   imageUrl?: string | null;
 };
@@ -380,6 +380,8 @@ export function ProductArt({
           ? "h-16 w-16 rounded-[18px]"
           : size === "compact"
             ? "aspect-square w-full rounded-[22px]"
+            : size === "admin-card"
+              ? "h-full w-full rounded-[7px]"
             : size === "column"
               ? "h-full min-h-[168px] w-full rounded-[24px]"
             : "aspect-[5/4] w-full rounded-[28px]"

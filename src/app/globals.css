@@ -219,6 +219,49 @@ button {
   box-shadow: 0 0 0 4px rgba(227, 106, 47, 0.12);
 }
 
+[data-product-modal] form {
+  gap: 14px;
+}
+
+[data-product-modal] form > .grid {
+  gap: 12px;
+}
+
+[data-product-modal] .field,
+[data-product-modal] .select {
+  min-height: 38px;
+  border-radius: 7px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+[data-product-modal] .textarea {
+  min-height: 74px;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+[data-product-modal] label > span {
+  margin-bottom: -2px;
+  margin-left: 14px;
+  display: inline-block;
+  background: #fffafa;
+  padding: 0 5px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111;
+  position: relative;
+  z-index: 1;
+}
+
+[data-product-modal] .btn-primary,
+[data-product-modal] .btn-secondary {
+  border-radius: 7px;
+  padding: 10px 18px;
+  font-weight: 700;
+}
+
 .kiosk-grid {
   display: grid;
   gap: 24px;
