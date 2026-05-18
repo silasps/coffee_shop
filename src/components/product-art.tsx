@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { CSSProperties } from "react";
 import type { MenuAreaSlug } from "@/lib/coffee/types";
 
@@ -9,6 +10,8 @@ type ProductArtProps = {
   size?: "default" | "compact" | "thumb" | "column" | "admin-card";
   area?: MenuAreaSlug;
   imageUrl?: string | null;
+  priority?: boolean;
+  sizes?: string;
 };
 
 type SectionArtProps = {
@@ -366,10 +369,21 @@ export function ProductArt({
   size = "default",
   area,
   imageUrl,
+  priority = false,
+  sizes,
 }: ProductArtProps) {
   const motif = inferMotif(title, area);
   const palette = scenePalettes[tone];
   const hasPhoto = Boolean(imageUrl);
+
+  const defaultSizes =
+    size === "thumb"
+      ? "64px"
+      : size === "admin-card"
+        ? "120px"
+        : size === "column" || size === "compact"
+          ? "(max-width: 640px) 100px, 156px"
+          : "(max-width: 520px) 100vw, (max-width: 1280px) 50vw, 33vw";
 
   return (
     <div
@@ -390,13 +404,13 @@ export function ProductArt({
       <div className="absolute inset-0" style={{ background: palette.background }} />
 
       {hasPhoto ? (
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: toBackgroundImage(imageUrl as string),
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-          }}
+        <Image
+          src={imageUrl as string}
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority={priority}
+          sizes={sizes ?? defaultSizes}
         />
       ) : (
         <FallbackPhoto motif={motif} palette={palette} />

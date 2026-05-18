@@ -14,7 +14,9 @@ import {
   createInventoryMovement,
   createManagedStore,
   createSupplier,
+  deleteCatalogCategory,
   deleteCatalogProduct,
+  deleteCatalogSection,
   getPublicCatalogCacheTag,
   getPublicStorefrontCacheTag,
   markBillingInvoicePaid,
@@ -197,12 +199,13 @@ export async function updateCatalogSectionAction(formData: FormData) {
 
 export async function createCategoryAction(formData: FormData) {
   const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+  const area =
+    (formData.get("area")?.toString() as "foods" | "hot-drinks" | "cold-drinks") ??
+    "foods";
 
-  await createCatalogCategory({
+  const category = await createCatalogCategory({
     storeSlug,
-    area:
-      (formData.get("area")?.toString() as "foods" | "hot-drinks" | "cold-drinks") ??
-      "foods",
+    area,
     namePt: formData.get("namePt")?.toString() ?? "",
     nameEn: parseOptionalString(formData.get("nameEn")),
     nameEs: parseOptionalString(formData.get("nameEs")),
@@ -218,6 +221,14 @@ export async function createCategoryAction(formData: FormData) {
   });
 
   revalidateStorePaths(storeSlug);
+
+  return {
+    slug: category.slug,
+    namePt: category.namePt,
+    area,
+    sidebarImageUrl: category.sidebarImageUrl,
+    productCount: 0,
+  };
 }
 
 export async function createProductAction(formData: FormData) {
@@ -281,6 +292,31 @@ export async function deleteProductAction(formData: FormData) {
   await deleteCatalogProduct({
     storeSlug,
     productId: formData.get("productId")?.toString() ?? "",
+  });
+
+  revalidateStorePaths(storeSlug);
+}
+
+export async function deleteCategoryAction(formData: FormData) {
+  const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+
+  await deleteCatalogCategory({
+    storeSlug,
+    categoryId: formData.get("categoryId")?.toString() ?? "",
+    categorySlug: formData.get("categorySlug")?.toString() ?? "",
+  });
+
+  revalidateStorePaths(storeSlug);
+}
+
+export async function deleteSectionAction(formData: FormData) {
+  const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+
+  await deleteCatalogSection({
+    storeSlug,
+    area:
+      (formData.get("area")?.toString() as "foods" | "hot-drinks" | "cold-drinks") ??
+      "foods",
   });
 
   revalidateStorePaths(storeSlug);

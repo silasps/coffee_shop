@@ -2597,6 +2597,30 @@ export async function updateCategoryVisuals(input: {
   });
 }
 
+export async function deleteCatalogCategory(input: {
+  storeSlug?: string;
+  categoryId?: string;
+  categorySlug?: string;
+}) {
+  const store = await getStoreOrThrow(input.storeSlug ?? DEFAULT_STORE_SLUG);
+  const category = await prisma.coffeeCatalogCategory.findFirst({
+    where: {
+      storeId: store.id,
+      OR: [
+        ...(input.categoryId ? [{ id: input.categoryId }] : []),
+        ...(input.categorySlug ? [{ slug: input.categorySlug }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!category) {
+    throw new Error("Categoria não encontrada.");
+  }
+
+  return prisma.coffeeCatalogCategory.delete({ where: { id: category.id } });
+}
+
 export async function updateCatalogSection(input: {
   storeSlug: string;
   area: MenuAreaSlug;
@@ -2650,6 +2674,17 @@ export async function updateCatalogSection(input: {
   });
 }
 
+export async function deleteCatalogSection(input: {
+  storeSlug?: string;
+  area: MenuAreaSlug;
+}) {
+  const store = await getStoreOrThrow(input.storeSlug ?? DEFAULT_STORE_SLUG);
+
+  return prisma.coffeeCatalogSection.deleteMany({
+    where: { storeId: store.id, area: areaMap[input.area] },
+  });
+}
+
 export async function createCatalogCategory(input: {
   storeSlug?: string;
   area: MenuAreaSlug;
@@ -2673,60 +2708,48 @@ export async function createCatalogCategory(input: {
 
   const slug = await createUniqueCategorySlug(store.id, nextName);
 
-  return prisma.$transaction(async (tx) => {
-    const area = areaMap[input.area];
-    const placement = input.placement ?? "LAST";
-    let sortOrder = 10;
+  const area = areaMap[input.area];
+  const placement = input.placement ?? "LAST";
+  let sortOrder = 10;
 
-    if (placement === "FIRST") {
-      await tx.coffeeCatalogCategory.updateMany({
-        where: {
-          storeId: store.id,
-          area,
-        },
-        data: {
-          sortOrder: {
-            increment: 10,
-          },
-        },
-      });
-    } else {
-      const maxSortOrder =
-        (
-          await tx.coffeeCatalogCategory.aggregate({
-            where: {
-              storeId: store.id,
-              area,
-            },
-            _max: { sortOrder: true },
-          })
-        )._max.sortOrder ?? 0;
+  if (placement === "FIRST") {
+    await prisma.coffeeCatalogCategory.updateMany({
+      where: { storeId: store.id, area },
+      data: { sortOrder: { increment: 10 } },
+    });
+  } else {
+    const maxSortOrder =
+      (
+        await prisma.coffeeCatalogCategory.aggregate({
+          where: { storeId: store.id, area },
+          _max: { sortOrder: true },
+        })
+      )._max.sortOrder ?? 0;
 
-      sortOrder = maxSortOrder + 10;
-    }
+    sortOrder = maxSortOrder + 10;
+  }
 
-    const localized = buildCategoryLocalizedFields({
+  const localized = buildCategoryLocalizedFields({
+    slug,
+    namePt: nextName,
+    nameEn: input.nameEn,
+    nameEs: input.nameEs,
+    descriptionPt: input.descriptionPt,
+    descriptionEn: input.descriptionEn,
+    descriptionEs: input.descriptionEs,
+  });
+
+  return prisma.coffeeCatalogCategory.create({
+    data: {
+      storeId: store.id,
+      area,
       slug,
-      namePt: nextName,
-      nameEn: input.nameEn,
-      nameEs: input.nameEs,
-      descriptionPt: input.descriptionPt,
-      descriptionEn: input.descriptionEn,
-      descriptionEs: input.descriptionEs,
-    });
-
-    return tx.coffeeCatalogCategory.create({
-      data: {
-        storeId: store.id,
-        area,
-        slug,
-        ...localized,
-        accentColor: cleanOptionalString(input.accentColor),
-        sidebarImageUrl: cleanOptionalString(input.sidebarImageUrl),
-        sortOrder,
-        isActive: typeof input.isActive === "boolean" ? input.isActive : true,
-      },
-    });
+      ...localized,
+      accentColor: cleanOptionalString(input.accentColor),
+      sidebarImageUrl: cleanOptionalString(input.sidebarImageUrl),
+      sortOrder,
+      isActive: typeof input.isActive === "boolean" ? input.isActive : true,
+    },
   });
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useDeferredValue, useRef, startTransition, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { CartDrawer } from "@/components/cart-drawer";
@@ -228,6 +229,7 @@ export function CatalogExperience({
                     area={areaData.area}
                     imageUrl={getAreaPreviewImage(areaData)}
                     active={currentArea === areaData.area}
+                    priority
                     onClick={() => {
                       resetContentScroll();
                       startTransition(() => {
@@ -249,6 +251,7 @@ export function CatalogExperience({
                       area="foods"
                       imageUrl={item.imageUrl}
                       active={currentArea === "foods" && selectedCategorySlug === item.slug}
+                      priority
                       onClick={() => {
                       resetContentScroll();
                       startTransition(() => {
@@ -387,12 +390,14 @@ function SidebarTile({
   area,
   imageUrl,
   active,
+  priority,
   onClick,
 }: {
   label: string;
   area?: MenuAreaSlug;
   imageUrl?: string | null;
   active: boolean;
+  priority?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -406,7 +411,7 @@ function SidebarTile({
           : "border-[rgba(90,52,37,0.2)] shadow-[0_10px_20px_rgba(61,34,23,0.12)]"
       }`}
     >
-      <SectionCardArt label={label} area={area} imageUrl={imageUrl} />
+      <SectionCardArt label={label} area={area} imageUrl={imageUrl} priority={priority} />
       <span
         className="display-title relative z-10 block w-full break-words text-[12px] leading-[0.96] text-white sm:text-[13px]"
         style={{ textShadow: "0 3px 14px rgba(0, 0, 0, 0.5)" }}
@@ -421,18 +426,24 @@ function SectionCardArt({
   label,
   area,
   imageUrl,
+  priority = false,
 }: {
   label: string;
   area?: MenuAreaSlug;
   imageUrl?: string | null;
+  priority?: boolean;
 }) {
   if (imageUrl) {
     return (
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url("${imageUrl.replace(/"/g, '\\"')}")` }}
-      >
+      <span aria-hidden="true" className="absolute inset-0 overflow-hidden">
+        <Image
+          src={imageUrl}
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority={priority}
+          sizes="(max-width: 640px) 50vw, 128px"
+        />
         <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(28,16,10,0.04),rgba(28,16,10,0.5))]" />
       </span>
     );
@@ -455,7 +466,7 @@ function CategoryTileGrid({
 }) {
   return (
     <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-3 p-4 sm:gap-4 sm:p-5 lg:grid-cols-4">
-      {categories.map((category) => (
+      {categories.map((category, index) => (
         <button
           key={category.slug}
           type="button"
@@ -466,6 +477,7 @@ function CategoryTileGrid({
             label={category.name}
             area={category.area}
             imageUrl={getCategoryPreviewImage(category)}
+            priority={index < 4}
           />
           <span
             className="display-title relative z-10 flex min-h-10 items-center justify-center px-2 py-2 text-xs leading-none min-[430px]:text-sm sm:min-h-12 sm:px-3 sm:py-3 sm:text-base"
@@ -492,11 +504,12 @@ function ProductList({
       className="overflow-hidden"
     >
       <div className="grid grid-cols-1 gap-3 p-3 min-[520px]:grid-cols-2 sm:gap-4 sm:p-5 xl:grid-cols-3">
-        {category.products.map((product) => (
+        {category.products.map((product, index) => (
           <ProductRow
             key={product.slug}
             locale={locale}
             product={product}
+            priority={index < 4}
           />
         ))}
       </div>
@@ -507,9 +520,11 @@ function ProductList({
 function ProductRow({
   locale,
   product,
+  priority,
 }: {
   locale: Locale;
   product: PublicProduct;
+  priority?: boolean;
 }) {
   return (
     <article
@@ -524,6 +539,7 @@ function ProductRow({
             size="default"
             area={product.area}
             imageUrl={product.imageUrl}
+            priority={priority}
           />
           {product.highlight ? (
             <span className="absolute right-3 top-3 rounded-full bg-[rgba(255,248,236,0.9)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-strong)] shadow-[0_8px_18px_rgba(61,34,23,0.12)]">

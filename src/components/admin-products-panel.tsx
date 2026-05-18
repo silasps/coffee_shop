@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent, type FocusEvent } from "react";
 import { ColorField } from "@/components/color-field";
 import { ImageUploadField } from "@/components/image-upload-field";
@@ -7,7 +8,9 @@ import { ProductArt, SectionArt } from "@/components/product-art";
 import {
   createCategoryAction,
   createProductAction,
+  deleteCategoryAction,
   deleteProductAction,
+  deleteSectionAction,
   updateCatalogSectionAction,
   updateCategoryVisualAction,
   updateProductAction,
@@ -38,15 +41,43 @@ type RootCategoryEdit = {
   accentColor?: string;
   isActive?: boolean;
 };
+type RootExtraCategory = {
+  slug: string;
+  name: string;
+  area: MenuAreaSlug;
+  imageUrl?: string | null;
+  productCount: number;
+};
 type ProductFlowView = "root-categories" | "sections" | "categories" | "products";
+type CatalogNodeType = "category" | "section" | "subsection" | "product";
+type CatalogParentType = "root" | "category" | "section" | "subsection";
 type AdminProductsModal =
-  | { type: "create-category" }
+  | {
+      type: "create-category";
+      nodeType?: Extract<CatalogNodeType, "category" | "section" | "subsection">;
+      parentId?: string;
+      parentType?: CatalogParentType;
+      area?: MenuAreaSlug;
+    }
+  | {
+      type: "choose-child";
+      parentId: string;
+      parentType: CatalogParentType;
+      area: MenuAreaSlug;
+      categorySlug?: string;
+    }
   | { type: "edit-root-category"; section: CatalogSectionSlug }
   | { type: "edit-section"; area: MenuAreaSlug }
   | { type: "edit-category"; categorySlug: string }
-  | { type: "create-product"; categorySlug: string }
+  | { type: "create-product"; categorySlug?: string; parentId?: string; parentType?: CatalogParentType; area?: MenuAreaSlug }
   | { type: "edit-product"; productId: string }
   | null;
+type DeleteConfirm = {
+  title: string;
+  message: string;
+  action: (formData: FormData) => Promise<void>;
+  fields: Record<string, string>;
+} | null;
 
 const translationLocales = ["pt", "en", "es"] as const;
 
@@ -396,6 +427,7 @@ export function AdminProductsPanel({
   initialArea,
   initialFoodCategorySlug,
 }: AdminProductsPanelProps) {
+  const router = useRouter();
   const foodsArea = catalog.find((entry) => entry.area === "foods") ?? null;
   const drinksAreas = catalog.filter((entry) => entry.area !== "foods");
   const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea) : [];
@@ -427,19 +459,33 @@ export function AdminProductsPanel({
   );
   const [rootCategoryEdits, setRootCategoryEdits] = useState<
     Partial<Record<CatalogSectionSlug, RootCategoryEdit>>
-  >(() => {
-    if (typeof window === "undefined") return {};
-
-    try {
-      const stored = window.localStorage.getItem(`coffee-root-categories:${storeSlug}`);
-      return stored
-        ? (JSON.parse(stored) as Partial<Record<CatalogSectionSlug, RootCategoryEdit>>)
-        : {};
-    } catch {
-      return {};
-    }
-  });
+  >({});
+  const [rootExtraCategories, setRootExtraCategories] = useState<RootExtraCategory[]>([]);
   const [modal, setModal] = useState<AdminProductsModal>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm>(null);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      try {
+        const storedRootCategories = window.localStorage.getItem(`coffee-root-categories:${storeSlug}`);
+        setRootCategoryEdits(
+          storedRootCategories
+            ? (JSON.parse(storedRootCategories) as Partial<Record<CatalogSectionSlug, RootCategoryEdit>>)
+            : {},
+        );
+      } catch {
+        setRootCategoryEdits({});
+      }
+
+      try {
+        const storedExtraCategories = window.localStorage.getItem(`coffee-root-extra-categories:${storeSlug}`);
+        setRootExtraCategories(storedExtraCategories ? (JSON.parse(storedExtraCategories) as RootExtraCategory[]) : []);
+      } catch {
+        setRootExtraCategories([]);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [storeSlug]);
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -495,9 +541,18 @@ export function AdminProductsPanel({
       : flowView === "products" && selectedCategory
       ? selectedCategoryProducts.length
       : displayCategories.reduce((total, category) => total + category.products.length, 0);
-  const createCategoryArea = selectedSection === "foods" ? "foods" : selectedDrinkArea;
+  const createCategoryArea =
+    modal?.type === "create-category" && modal.area
+      ? modal.area
+      : selectedSection === "foods"
+        ? "foods"
+        : selectedDrinkArea;
   const modalCategorySlug =
-    modal?.type === "edit-category" || modal?.type === "create-product" ? modal.categorySlug : null;
+    modal?.type === "edit-category"
+      ? modal.categorySlug
+      : modal?.type === "create-product"
+        ? modal.categorySlug ?? null
+        : null;
   const modalCategoryRecord = modalCategorySlug ? categoriesBySlug.get(modalCategorySlug) ?? null : null;
   const modalSection = modal?.type === "edit-section" ? sectionsByArea.get(modal.area) ?? null : null;
   const modalPublicCategory = modalCategorySlug
@@ -513,6 +568,90 @@ export function AdminProductsPanel({
   const closeModalOnSubmit = () => {
     setModal(null);
   };
+  const productTargetCategories =
+    modal?.type === "create-product"
+      ? catalog
+          .filter((entry) => {
+            if (modal.categorySlug) return entry.categories.some((category) => category.slug === modal.categorySlug);
+            if (modal.parentType === "category") {
+              return selectedSection === "foods" ? entry.area === "foods" : entry.area !== "foods";
+            }
+            if (modal.parentType === "section") return entry.area === modal.area;
+            return true;
+          })
+          .flatMap((entry) => entry.categories)
+      : [];
+  const autoProductCategorySlug = modalCategorySlug ?? productTargetCategories[0]?.slug ?? "";
+  async function createProductAndRefresh(formData: FormData) {
+    const categorySlug = formData.get("categorySlug")?.toString() ?? "";
+
+    await createProductAction(formData);
+    setModal(null);
+
+    if (categorySlug) {
+      const category = catalog.flatMap((entry) => entry.categories).find((item) => item.slug === categorySlug);
+      if (category) {
+        setSelectedSection(category.area === "foods" ? "foods" : "drinks");
+        if (category.area !== "foods") setSelectedDrinkArea(category.area);
+        setSelectedCategorySlug(category.slug);
+        setFlowView("products");
+      }
+    }
+
+    router.refresh();
+  }
+  function openCreateCategoryModal(input?: {
+    nodeType?: Extract<CatalogNodeType, "category" | "section" | "subsection">;
+    parentId?: string;
+    parentType?: CatalogParentType;
+    area?: MenuAreaSlug;
+  }) {
+    setModal({
+      type: "create-category",
+      nodeType: input?.nodeType ?? "category",
+      parentId: input?.parentId ?? storeSlug,
+      parentType: input?.parentType ?? "root",
+      area: input?.area ?? createCategoryArea,
+    });
+  }
+  async function createCategoryAndRefresh(formData: FormData) {
+    const area = (formData.get("area")?.toString() as MenuAreaSlug | undefined) ?? createCategoryArea;
+    const nodeType = (formData.get("type")?.toString() as CatalogNodeType | undefined) ?? "subsection";
+    const created = await createCategoryAction(formData);
+
+    setModal(null);
+    if (created && nodeType === "category") {
+      const next = [
+        ...rootExtraCategories.filter((category) => category.slug !== created.slug),
+        {
+          slug: created.slug,
+          name: created.namePt,
+          area: created.area,
+          imageUrl: created.sidebarImageUrl,
+          productCount: created.productCount,
+        },
+      ];
+
+      setRootExtraCategories(next);
+      window.localStorage.setItem(`coffee-root-extra-categories:${storeSlug}`, JSON.stringify(next));
+    }
+    if (nodeType === "category" || nodeType === "section") {
+      setSelectedSection(area === "foods" ? "foods" : "drinks");
+      if (area !== "foods") setSelectedDrinkArea(area);
+      setSelectedCategorySlug(null);
+      setFlowView("sections");
+    } else if (area === "foods") {
+      setSelectedSection("foods");
+      setSelectedCategorySlug(null);
+      setFlowView("sections");
+    } else {
+      setSelectedSection("drinks");
+      setSelectedDrinkArea(area);
+      setSelectedCategorySlug(null);
+      setFlowView("categories");
+    }
+    router.refresh();
+  }
   const drinksRootName = rootCategoryEdits.drinks?.name || "Bebidas";
   const foodsRootName = rootCategoryEdits.foods?.name || "Comidas";
   const drinksRootImage = rootCategoryEdits.drinks?.imageUrl || getRootPreviewImage(drinksAreas);
@@ -544,14 +683,28 @@ export function AdminProductsPanel({
     window.localStorage.setItem(`coffee-root-categories:${storeSlug}`, JSON.stringify(next));
     setModal(null);
   }
+  async function confirmDelete(formData: FormData) {
+    if (!deleteConfirm) return;
+
+    await deleteConfirm.action(formData);
+    const categorySlug = formData.get("categorySlug")?.toString();
+    if (categorySlug) {
+      const next = rootExtraCategories.filter((category) => category.slug !== categorySlug);
+      setRootExtraCategories(next);
+      window.localStorage.setItem(`coffee-root-extra-categories:${storeSlug}`, JSON.stringify(next));
+    }
+    setDeleteConfirm(null);
+    setModal(null);
+    router.refresh();
+  }
 
   return (
     <div className="pb-1">
-      <section className="overflow-hidden rounded-[7px] border border-[#c6c6c6]/50 bg-white/70 p-4">
+      <section className="overflow-hidden rounded-[18px] border border-[#c6c6c6]/50 bg-white/70 p-4">
         <div className="min-h-[360px]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-bold text-[#878181]">
+              <p className="text-sm font-normal text-[#878181]">
                 {flowView === "root-categories"
                   ? "Gestão de produtos"
                   : flowView === "sections"
@@ -598,7 +751,7 @@ export function AdminProductsPanel({
 
           {flowView === "root-categories" ? (
             <div ref={contentRef} className="mt-8 grid grid-cols-1 gap-3">
-              <article className="relative min-h-[112px] overflow-hidden rounded-[7px]">
+              <article className="relative min-h-[112px] overflow-hidden rounded-[18px]">
                 <button
                   type="button"
                   onClick={() => {
@@ -610,8 +763,8 @@ export function AdminProductsPanel({
                 >
                   <SectionArt label={drinksRootName} area="cold-drinks" imageUrl={drinksRootImage} />
                   <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
-                    <span className="text-xl font-bold leading-tight">{drinksRootName}</span>
-                    <span className="mt-1 text-xs font-bold text-white">
+                    <span className="text-xl font-normal leading-tight">{drinksRootName}</span>
+                    <span className="mt-1 text-xs font-normal text-white">
                       {drinksAreas.length} seções · {drinksProductCount} produtos
                     </span>
                   </span>
@@ -619,13 +772,13 @@ export function AdminProductsPanel({
                 <button
                   type="button"
                   onClick={() => setModal({ type: "edit-root-category", section: "drinks" })}
-                  className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                  className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                 >
                   Editar
                 </button>
               </article>
 
-              <article className="relative min-h-[112px] overflow-hidden rounded-[7px]">
+              <article className="relative min-h-[112px] overflow-hidden rounded-[18px]">
                 <button
                   type="button"
                   onClick={() => {
@@ -637,8 +790,8 @@ export function AdminProductsPanel({
                 >
                   <SectionArt label={foodsRootName} area="foods" imageUrl={foodsRootImage} />
                   <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
-                    <span className="text-xl font-bold leading-tight">{foodsRootName}</span>
-                    <span className="mt-1 text-xs font-bold text-white">
+                    <span className="text-xl font-normal leading-tight">{foodsRootName}</span>
+                    <span className="mt-1 text-xs font-normal text-white">
                       {foodSidebarItems.length} seções · {foodsProductCount} produtos
                     </span>
                   </span>
@@ -646,16 +799,53 @@ export function AdminProductsPanel({
                 <button
                   type="button"
                   onClick={() => setModal({ type: "edit-root-category", section: "foods" })}
-                  className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                  className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                 >
                   Editar
                 </button>
               </article>
 
+              {rootExtraCategories.map((category) => (
+                <article key={category.slug} className="relative min-h-[112px] overflow-hidden rounded-[18px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSection(category.area === "foods" ? "foods" : "drinks");
+                      if (category.area !== "foods") setSelectedDrinkArea(category.area);
+                      setSelectedCategorySlug(category.slug);
+                      setFlowView("products");
+                    }}
+                    className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
+                  >
+                    <SectionArt label={category.name} area={category.area} imageUrl={category.imageUrl} />
+                    <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
+                      <span className="text-xl font-normal leading-tight">{category.name}</span>
+                      <span className="mt-1 text-xs font-normal text-white">
+                        {category.productCount} produtos
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModal({ type: "edit-category", categorySlug: category.slug })}
+                    className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
+                  >
+                    Editar
+                  </button>
+                </article>
+              ))}
+
               <button
                 type="button"
-                onClick={() => setModal({ type: "create-category" })}
-                className="flex min-h-[120px] items-center justify-center rounded-[7px] border border-dashed border-[#ff943c] bg-white/50 text-2xl font-bold leading-none text-[#ff943c]"
+                onClick={() =>
+                  openCreateCategoryModal({
+                    nodeType: "category",
+                    parentId: storeSlug,
+                    parentType: "root",
+                    area: createCategoryArea,
+                  })
+                }
+                className="flex min-h-[120px] items-center justify-center rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 text-2xl font-bold leading-none text-[#ff943c]"
                 aria-label="Adicionar categoria"
               >
                 +
@@ -667,19 +857,8 @@ export function AdminProductsPanel({
             <div ref={contentRef} className="mt-8">
               {selectedSection === "drinks" ? (
                 <>
-                  <div className="mb-5 flex items-center justify-between gap-3">
+                  <div className="mb-5">
                     <h3 className="text-4xl font-normal text-black">Bebidas</h3>
-                    <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSection("drinks");
-                      setModal({ type: "create-category" });
-                    }}
-                    className="hidden"
-                    aria-label="Adicionar seção em Bebidas"
-                  >
-                    +
-                  </button>
                   </div>
                 <div className="grid grid-cols-2 gap-3">
                   {drinksAreas.map((areaData) => (
@@ -692,7 +871,7 @@ export function AdminProductsPanel({
                         setSelectedCategorySlug(null);
                         setFlowView("categories");
                       }}
-                      className="relative min-h-[96px] overflow-hidden rounded-[7px] text-left transition hover:-translate-y-[1px]"
+                      className="relative min-h-[96px] overflow-hidden rounded-[18px] text-left transition hover:-translate-y-[1px]"
                     >
                       <SectionArt
                         label={sectionsByArea.get(areaData.area)?.namePt ?? areaLabels[areaData.area]}
@@ -700,10 +879,10 @@ export function AdminProductsPanel({
                         imageUrl={sectionsByArea.get(areaData.area)?.imageUrl ?? getAreaPreviewImage(areaData)}
                       />
                       <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                        <span className="text-sm font-bold leading-tight">
+                        <span className="text-sm font-normal leading-tight">
                           {sectionsByArea.get(areaData.area)?.namePt ?? areaLabels[areaData.area]}
                         </span>
-                        <span className="mt-1 text-xs font-bold text-white">
+                        <span className="mt-1 text-xs font-normal text-white">
                           {areaData.categories.length} subseções
                         </span>
                       </span>
@@ -721,33 +900,38 @@ export function AdminProductsPanel({
                             setModal({ type: "edit-section", area: areaData.area });
                           }
                         }}
-                        className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                        className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                       >
                         Editar
                       </span>
                     </button>
                   ))}
-                </div>
-                </>
-              ) : (
-                <>
-                  <div className="mb-5 flex items-center justify-between gap-3">
-                  <h3 className="text-4xl font-normal text-black">Comidas</h3>
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedSection("foods");
-                      setModal({ type: "create-category" });
+                      setSelectedSection("drinks");
+                      setModal({
+                        type: "choose-child",
+                        parentId: "drinks",
+                        parentType: "category",
+                        area: selectedDrinkArea,
+                      });
                     }}
-                    className="hidden"
-                    aria-label="Adicionar seção em Comidas"
+                    className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
+                    aria-label="Adicionar seção em Bebidas"
                   >
                     +
                   </button>
                 </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-5">
+                  <h3 className="text-4xl font-normal text-black">Comidas</h3>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   {foodSidebarItems.map((item) => (
-                    <article key={item.slug} className="relative min-h-[96px] overflow-hidden rounded-[7px]">
+                    <article key={item.slug} className="relative min-h-[96px] overflow-hidden rounded-[18px]">
                       <button
                         type="button"
                         onClick={() => {
@@ -759,8 +943,8 @@ export function AdminProductsPanel({
                       >
                         <SectionArt label={item.label} area="foods" imageUrl={item.imageUrl} />
                         <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                          <span className="text-sm font-bold leading-tight">{item.label}</span>
-                          <span className="mt-1 text-xs font-bold text-white">
+                          <span className="text-sm font-normal leading-tight">{item.label}</span>
+                          <span className="mt-1 text-xs font-normal text-white">
                             {item.productCount} produtos
                           </span>
                         </span>
@@ -768,12 +952,28 @@ export function AdminProductsPanel({
                       <button
                         type="button"
                         onClick={() => setModal({ type: "edit-category", categorySlug: item.slug })}
-                        className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                        className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                       >
                         Editar
                       </button>
                     </article>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSection("foods");
+                      setModal({
+                        type: "choose-child",
+                        parentId: "foods",
+                        parentType: "category",
+                        area: "foods",
+                      });
+                    }}
+                    className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
+                    aria-label="Adicionar seção em Comidas"
+                  >
+                    +
+                  </button>
                 </div>
                 </>
               )}
@@ -787,7 +987,7 @@ export function AdminProductsPanel({
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {displayCategories.map((category) => (
-                  <article key={category.slug} className="relative min-h-[96px] overflow-hidden rounded-[7px]">
+                  <article key={category.slug} className="relative min-h-[96px] overflow-hidden rounded-[18px]">
                     <button
                       type="button"
                       onClick={() => {
@@ -802,8 +1002,8 @@ export function AdminProductsPanel({
                         imageUrl={getCategoryPreviewImage(category)}
                       />
                       <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                        <span className="text-sm font-bold leading-tight">{category.name}</span>
-                        <span className="mt-1 text-xs font-bold text-white">
+                        <span className="text-sm font-normal leading-tight">{category.name}</span>
+                        <span className="mt-1 text-xs font-normal text-white">
                           {category.products.length} produtos
                         </span>
                       </span>
@@ -811,7 +1011,7 @@ export function AdminProductsPanel({
                     <button
                       type="button"
                       onClick={() => setModal({ type: "edit-category", categorySlug: category.slug })}
-                      className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                      className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                     >
                       Editar
                     </button>
@@ -819,8 +1019,15 @@ export function AdminProductsPanel({
                 ))}
                 <button
                   type="button"
-                  onClick={() => setModal({ type: "create-category" })}
-                  className="min-h-[96px] rounded-[7px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
+                  onClick={() =>
+                    setModal({
+                      type: "choose-child",
+                      parentId: selectedDrinkArea,
+                      parentType: "section",
+                      area: createCategoryArea,
+                    })
+                  }
+                  className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
                 >
                   +
                 </button>
@@ -844,7 +1051,15 @@ export function AdminProductsPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setModal({ type: "create-product", categorySlug: selectedCategory.slug })}
+                    onClick={() =>
+                      setModal({
+                        type: "choose-child",
+                        parentId: selectedCategory.id,
+                        parentType: "subsection",
+                        area: selectedCategory.area,
+                        categorySlug: selectedCategory.slug,
+                      })
+                    }
                     className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[rgba(227,106,47,0.42)] bg-white/88 text-xl font-semibold leading-none text-[var(--brand-strong)]"
                     aria-label="Adicionar produto"
                   >
@@ -856,7 +1071,7 @@ export function AdminProductsPanel({
                 {selectedCategoryProducts.map((product) => (
                   <article
                     key={product.id}
-                    className="relative min-h-[96px] overflow-hidden rounded-[7px] border border-[#c6c6c6]/60 bg-white/88"
+                    className="relative min-h-[96px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/60 bg-white/88"
                   >
                     <div className="absolute inset-0">
                       <ProductArt
@@ -868,17 +1083,17 @@ export function AdminProductsPanel({
                       />
                     </div>
                     <div className="absolute inset-x-0 bottom-0 z-10 bg-[rgba(55,52,48,0.78)] p-2 text-white">
-                      <h3 className="line-clamp-2 text-sm font-bold leading-tight">
+                      <h3 className="line-clamp-2 text-sm font-normal leading-tight">
                         {product.namePt}
                       </h3>
-                      <p className="mt-1 text-sm font-bold">
+                      <p className="mt-1 text-sm font-normal">
                         {formatMoney(product.price, "pt")}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setModal({ type: "edit-product", productId: product.id })}
-                      className="absolute right-2 top-2 z-20 rounded-[7px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-bold text-white"
+                      className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
                     >
                       Editar
                     </button>
@@ -896,8 +1111,16 @@ export function AdminProductsPanel({
                 ))}
                 <button
                   type="button"
-                  onClick={() => setModal({ type: "create-product", categorySlug: selectedCategory.slug })}
-                  className="min-h-[96px] rounded-[7px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
+                  onClick={() =>
+                    setModal({
+                      type: "choose-child",
+                      parentId: selectedCategory.id,
+                      parentType: "subsection",
+                      area: selectedCategory.area,
+                      categorySlug: selectedCategory.slug,
+                    })
+                  }
+                  className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
                 >
                   +
                 </button>
@@ -913,17 +1136,23 @@ export function AdminProductsPanel({
           role="dialog"
           aria-modal="true"
         >
-          <div data-product-modal className="w-full max-w-[640px] overflow-hidden rounded-[7px] border border-[#c6c6c6]/70 bg-white/70">
+          <div data-product-modal className="w-full max-w-[640px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/70 bg-white/70">
             <div className="flex items-center justify-between gap-4 border-b border-[#c6c6c6]/70 px-7 py-5">
               <h2 className="text-2xl font-bold text-black">
-                {modal.type === "create-category"
-                  ? `Nova seção em ${activeCatalogLabel}`
+                {modal.type === "choose-child"
+                  ? "O que deseja criar?"
+                  : modal.type === "create-category"
+                    ? modal.nodeType === "category"
+                      ? "Nova categoria"
+                      : modal.nodeType === "section"
+                        ? "Nova seção"
+                        : `Nova subseção em ${activeCatalogLabel}`
                   : modal.type === "edit-root-category"
                     ? "Editar categoria"
                   : modal.type === "edit-section"
                     ? "Editar seção"
                   : modal.type === "edit-category"
-                    ? "Editar seção"
+                    ? "Editar subseção"
                     : modal.type === "create-product"
                       ? "Novo produto"
                       : "Editar produto"}
@@ -939,6 +1168,95 @@ export function AdminProductsPanel({
             </div>
 
             <div className="no-scrollbar max-h-[calc(100vh-120px)] overflow-y-auto p-7">
+              {modal.type === "choose-child" ? (
+                <div className="grid gap-3">
+                  <p className="text-sm font-semibold text-[#747171]">O que deseja criar?</p>
+                  {modal.parentType === "subsection" && modal.categorySlug ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setModal({
+                          type: "create-product",
+                          categorySlug: modal.categorySlug as string,
+                          parentId: modal.parentId,
+                          parentType: modal.parentType,
+                        })
+                      }
+                      className="btn-primary w-full"
+                    >
+                      Criar Produto
+                    </button>
+                  ) : null}
+                  {modal.parentType === "section" ? (
+                    <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openCreateCategoryModal({
+                          nodeType: "subsection",
+                          parentId: modal.parentId,
+                          parentType: modal.parentType,
+                          area: modal.area,
+                        })
+                      }
+                      className="btn-primary w-full"
+                    >
+                      Criar Subseção
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setModal({
+                          type: "create-product",
+                          parentId: modal.parentId,
+                          parentType: modal.parentType,
+                          area: modal.area,
+                        })
+                      }
+                      className="btn-primary w-full"
+                    >
+                      Criar Produto
+                    </button>
+                    </>
+                  ) : null}
+                  {modal.parentType === "category" ? (
+                    <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openCreateCategoryModal({
+                          nodeType: "section",
+                          parentId: modal.parentId,
+                          parentType: modal.parentType,
+                          area: modal.area,
+                        })
+                      }
+                      className="btn-primary w-full"
+                    >
+                      Criar Seção
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setModal({
+                          type: "create-product",
+                          parentId: modal.parentId,
+                          parentType: modal.parentType,
+                          area: modal.area,
+                        })
+                      }
+                      className="btn-primary w-full"
+                    >
+                      Criar Produto
+                    </button>
+                    </>
+                  ) : null}
+                  <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
+                    Cancelar
+                  </button>
+                </div>
+              ) : null}
+
               {modal.type === "edit-root-category" ? (
                 <form
                   onSubmit={(event) => {
@@ -947,6 +1265,10 @@ export function AdminProductsPanel({
                   }}
                   className="grid gap-4"
                 >
+                  <input type="hidden" name="type" value="category" />
+                  <input type="hidden" name="parentId" value={storeSlug} />
+                  <input type="hidden" name="parentType" value="root" />
+                  <input type="hidden" name="area" value={modal.section === "foods" ? "foods" : "hot-drinks"} />
                   <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
                     <div className="grid gap-4">
                       <LocalizedTextFields
@@ -969,14 +1291,7 @@ export function AdminProductsPanel({
                         }}
                         textarea
                       />
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="block">
-                          <span>Seção</span>
-                          <select name="area" className="select" defaultValue={modal.section === "foods" ? "foods" : "hot-drinks"}>
-                            <option value="foods">Comidas</option>
-                            <option value="hot-drinks">Bebidas</option>
-                          </select>
-                        </label>
+                      <div className="grid gap-4">
                         <label className="block">
                           <span>Posição</span>
                           <select name="placement" className="select" defaultValue="LAST">
@@ -1001,6 +1316,25 @@ export function AdminProductsPanel({
                       <ColorField name="accentColor" label="Cor da seção" defaultValue={getRootDefaults(modal.section).accentColor ?? "#c96b3f"} />
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteConfirm({
+                        title: "Excluir categoria?",
+                        message: "Isso remove apenas a personalização desta categoria raiz.",
+                        fields: {},
+                        action: async () => {
+                          const next = { ...rootCategoryEdits };
+                          delete next[modal.section];
+                          setRootCategoryEdits(next);
+                          window.localStorage.setItem(`coffee-root-categories:${storeSlug}`, JSON.stringify(next));
+                        },
+                      })
+                    }
+                    className="btn-secondary w-full border-red-500 text-red-600"
+                  >
+                    Excluir
+                  </button>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <button type="submit" className="btn-primary w-full">
                       Salvar
@@ -1013,8 +1347,12 @@ export function AdminProductsPanel({
               ) : null}
 
               {modal.type === "create-category" ? (
-                <form action={createCategoryAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
+                <form action={createCategoryAndRefresh} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
+                  <input type="hidden" name="type" value={modal.nodeType ?? "subsection"} />
+                  <input type="hidden" name="parentId" value={modal.parentId ?? ""} />
+                  <input type="hidden" name="parentType" value={modal.parentType ?? "section"} />
+                  <input type="hidden" name="area" value={createCategoryArea} />
 
                   <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
                     <div className="grid gap-4">
@@ -1038,21 +1376,7 @@ export function AdminProductsPanel({
                         }}
                         textarea
                       />
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                            Seção
-                          </span>
-                          <select name="area" className="select" defaultValue={createCategoryArea}>
-                            <optgroup label="Comidas">
-                              <option value="foods">Comidas</option>
-                            </optgroup>
-                            <optgroup label="Bebidas">
-                              <option value="hot-drinks">Bebidas quentes</option>
-                              <option value="cold-drinks">Bebidas geladas</option>
-                            </optgroup>
-                          </select>
-                        </label>
+                      <div className="grid gap-4">
                         <label className="block">
                           <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
                             Posição
@@ -1095,6 +1419,9 @@ export function AdminProductsPanel({
               {modal.type === "edit-section" ? (
                 <form action={updateCatalogSectionAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
+                  <input type="hidden" name="type" value="section" />
+                  <input type="hidden" name="parentId" value={modal.area === "foods" ? "foods" : "drinks"} />
+                  <input type="hidden" name="parentType" value="category" />
                   <input type="hidden" name="area" value={modal.area} />
 
                   <LocalizedTextFields
@@ -1131,6 +1458,20 @@ export function AdminProductsPanel({
                       Seção ativa
                     </span>
                   </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteConfirm({
+                        title: "Excluir seção?",
+                        message: "Confirme se deseja excluir esta seção.",
+                        action: deleteSectionAction,
+                        fields: { storeSlug, area: modal.area },
+                      })
+                    }
+                    className="btn-secondary w-full border-red-500 text-red-600"
+                  >
+                    Excluir
+                  </button>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
                       Cancelar
@@ -1145,6 +1486,9 @@ export function AdminProductsPanel({
               {modal.type === "edit-category" && modalCategoryRecord && modalPublicCategory ? (
                 <form action={updateCategoryVisualAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
+                  <input type="hidden" name="type" value="subsection" />
+                  <input type="hidden" name="parentId" value={modalPublicCategory.area} />
+                  <input type="hidden" name="parentType" value="section" />
                   <input type="hidden" name="categoryId" value={modalCategoryRecord.id} />
                   <input type="hidden" name="categorySlug" value={modalPublicCategory.slug} />
 
@@ -1181,6 +1525,24 @@ export function AdminProductsPanel({
                       Seção ativa na vitrine
                     </span>
                   </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteConfirm({
+                        title: "Excluir categoria?",
+                        message: "Confirme se deseja excluir esta categoria e seus produtos.",
+                        action: deleteCategoryAction,
+                        fields: {
+                          storeSlug,
+                          categoryId: modalCategoryRecord.id,
+                          categorySlug: modalPublicCategory.slug,
+                        },
+                      })
+                    }
+                    className="btn-secondary w-full border-red-500 text-red-600"
+                  >
+                    Excluir
+                  </button>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
                       Cancelar
@@ -1192,10 +1554,13 @@ export function AdminProductsPanel({
                 </form>
               ) : null}
 
-              {modal.type === "create-product" && modalCategorySlug ? (
-                <form action={createProductAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
+              {modal.type === "create-product" && autoProductCategorySlug ? (
+                <form action={createProductAndRefresh} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="categorySlug" value={modalCategorySlug} />
+                  <input type="hidden" name="type" value="product" />
+                  <input type="hidden" name="parentId" value={modal.parentId ?? autoProductCategorySlug} />
+                  <input type="hidden" name="parentType" value={modal.parentType ?? "subsection"} />
+                  <input type="hidden" name="categorySlug" value={autoProductCategorySlug} />
                   <ImageUploadField
                     name="imageUrl"
                     label="Colocar preview da imagem aqui"
@@ -1280,6 +1645,9 @@ export function AdminProductsPanel({
               {modal.type === "edit-product" && modalProduct ? (
                 <form action={updateProductAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
+                  <input type="hidden" name="type" value="product" />
+                  <input type="hidden" name="parentId" value={modalProduct.categorySlug} />
+                  <input type="hidden" name="parentType" value="subsection" />
                   <input type="hidden" name="productId" value={modalProduct.id} />
                   <input type="hidden" name="categorySlug" value={modalProduct.categorySlug} />
                   <ImageUploadField
@@ -1375,6 +1743,20 @@ export function AdminProductsPanel({
                       <span className="text-sm font-semibold text-[var(--espresso)]">Destaque</span>
                     </label>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteConfirm({
+                        title: "Excluir produto?",
+                        message: "Confirme se deseja excluir este produto.",
+                        action: deleteProductAction,
+                        fields: { storeSlug, productId: modalProduct.id },
+                      })
+                    }
+                    className="btn-secondary w-full border-red-500 text-red-600"
+                  >
+                    Excluir
+                  </button>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <button type="submit" className="btn-primary w-full">
                       Salvar
@@ -1386,6 +1768,26 @@ export function AdminProductsPanel({
                 </form>
               ) : null}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirm ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[rgba(40,21,14,0.38)] p-4">
+          <div className="w-full max-w-md rounded-[12px] border border-[#c6c6c6]/70 bg-white p-6">
+            <h2 className="text-2xl font-bold text-black">{deleteConfirm.title}</h2>
+            <p className="mt-3 text-sm text-[#747171]">{deleteConfirm.message}</p>
+            <form action={confirmDelete} className="mt-6 grid gap-3 sm:grid-cols-2">
+              {Object.entries(deleteConfirm.fields).map(([name, value]) => (
+                <input key={name} type="hidden" name={name} value={value} />
+              ))}
+              <button type="button" onClick={() => setDeleteConfirm(null)} className="btn-secondary w-full">
+                Cancelar
+              </button>
+              <button type="submit" className="btn-secondary w-full border-red-500 text-red-600">
+                Confirmar exclusão
+              </button>
+            </form>
           </div>
         </div>
       ) : null}

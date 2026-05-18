@@ -70,7 +70,7 @@ export function AdminShell({
   return (
     <div className={productMode ? "mx-auto w-full max-w-[680px] bg-[#f8eee3] px-3 py-3" : "site-shell px-0 py-6 md:py-8"}>
       <div className={productMode ? "space-y-3" : "space-y-5"}>
-        <header className={productMode ? "overflow-hidden bg-[#ff972e]" : "card-panel overflow-hidden"}>
+        <header className={productMode ? "overflow-hidden rounded-[28px] bg-[#ff972e]" : "card-panel overflow-hidden"}>
           <div className={productMode ? "flex flex-col gap-3 px-5 py-4" : "flex flex-col gap-5 p-5 md:p-6"}>
             <div className="flex items-start justify-between gap-4">
               <div className={productMode ? "min-w-0" : "min-w-0 space-y-3"}>
@@ -91,7 +91,7 @@ export function AdminShell({
                 {actions ? <div className="hidden flex-wrap gap-3 lg:flex">{actions}</div> : null}
                 <button
                   type="button"
-                  className={productMode ? "inline-flex h-12 w-12 items-center justify-center text-black lg:hidden" : "inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--line)] bg-white/80 text-[var(--espresso)] shadow-[0_10px_24px_rgba(61,34,23,0.08)] lg:hidden"}
+                  className={productMode ? "inline-flex h-12 w-12 items-center justify-center text-white lg:hidden" : "inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--line)] bg-white/80 text-[var(--espresso)] shadow-[0_10px_24px_rgba(61,34,23,0.08)] lg:hidden"}
                   aria-expanded={menuOpen}
                   aria-label={menuOpen ? "Fechar menu" : "Abrir menu"}
                   onClick={() => setMenuOpen((open) => !open)}
