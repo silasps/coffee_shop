@@ -16,6 +16,11 @@ export function buildStoreAdminPath(storeSlug: string) {
   return `/loja/${storeSlug}/admin`;
 }
 
+export function buildClientPainelPath(storeSlug?: string) {
+  if (storeSlug) return `/painel/${storeSlug}`;
+  return "/painel";
+}
+
 export function buildStorePath(
   storeSlug: string,
   locale: Locale,

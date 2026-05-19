@@ -2150,9 +2150,10 @@ export async function getOperationsDashboard(
       where: { slug: storeSlug },
       include: {
         orders: {
+          where: { paymentStatus: CoffeePaymentStatus.PAID },
           include: { items: true },
           orderBy: { createdAt: "desc" },
-          take: 16,
+          take: 40,
         },
         products: {
           include: { category: true },
@@ -2179,6 +2180,7 @@ export async function getOperationsDashboard(
           take: 20,
         },
         financeEntries: {
+          where: { orderId: null, inventoryMovementId: null },
           include: {
             supplier: {
               select: { name: true },
@@ -3117,6 +3119,7 @@ export async function createFinanceEntry(input: {
   supplierId?: string;
   referenceCode?: string;
   notes?: string;
+  happenedAt?: Date;
 }) {
   const store = await getStoreOrThrow(input.storeSlug);
 
@@ -3134,6 +3137,38 @@ export async function createFinanceEntry(input: {
       amount: input.amount,
       referenceCode: cleanOptionalString(input.referenceCode),
       notes: cleanOptionalString(input.notes),
+      ...(input.happenedAt && { happenedAt: input.happenedAt }),
+    },
+  });
+}
+
+export async function deleteFinanceEntry(entryId: string) {
+  return prisma.coffeeFinanceEntry.delete({ where: { id: entryId } });
+}
+
+export async function updateFinanceEntry(input: {
+  entryId: string;
+  direction: CoffeeFinanceDirection;
+  category: CoffeeFinanceCategory;
+  descriptionPt: string;
+  amount: number;
+  referenceCode?: string;
+  notes?: string;
+  happenedAt?: Date;
+}) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error("Informe um valor válido para o lançamento.");
+  }
+  return prisma.coffeeFinanceEntry.update({
+    where: { id: input.entryId },
+    data: {
+      direction: input.direction,
+      category: input.category,
+      descriptionPt: input.descriptionPt.trim(),
+      amount: input.amount,
+      referenceCode: cleanOptionalString(input.referenceCode),
+      notes: cleanOptionalString(input.notes),
+      ...(input.happenedAt && { happenedAt: input.happenedAt }),
     },
   });
 }

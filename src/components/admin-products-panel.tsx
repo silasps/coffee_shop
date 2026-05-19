@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ChangeEvent, type FocusEvent } from "react";
-import { ColorField } from "@/components/color-field";
+import { useState, type ChangeEvent, type FocusEvent } from "react";
 import { ImageUploadField } from "@/components/image-upload-field";
 import { ProductArt, SectionArt } from "@/components/product-art";
 import {
@@ -10,7 +9,6 @@ import {
   createProductAction,
   deleteCategoryAction,
   deleteProductAction,
-  deleteSectionAction,
   updateCatalogSectionAction,
   updateCategoryVisualAction,
   updateProductAction,
@@ -27,51 +25,20 @@ import type {
 } from "@/lib/coffee/types";
 
 type TranslationLocale = "pt" | "en" | "es";
-
 type LocalizedFieldDefaults = Partial<Record<TranslationLocale, string | null | undefined>>;
-type CatalogSectionSlug = "drinks" | "foods";
-type RootCategoryEdit = {
-  name: string;
-  nameEn?: string;
-  nameEs?: string;
-  descriptionPt?: string;
-  descriptionEn?: string;
-  descriptionEs?: string;
-  imageUrl: string;
-  accentColor?: string;
-  isActive?: boolean;
-};
-type RootExtraCategory = {
-  slug: string;
-  name: string;
-  area: MenuAreaSlug;
-  imageUrl?: string | null;
-  productCount: number;
-};
-type ProductFlowView = "root-categories" | "sections" | "categories" | "products";
-type CatalogNodeType = "category" | "section" | "subsection" | "product";
-type CatalogParentType = "root" | "category" | "section" | "subsection";
-type AdminProductsModal =
-  | {
-      type: "create-category";
-      nodeType?: Extract<CatalogNodeType, "category" | "section" | "subsection">;
-      parentId?: string;
-      parentType?: CatalogParentType;
-      area?: MenuAreaSlug;
-    }
-  | {
-      type: "choose-child";
-      parentId: string;
-      parentType: CatalogParentType;
-      area: MenuAreaSlug;
-      categorySlug?: string;
-    }
-  | { type: "edit-root-category"; section: CatalogSectionSlug }
+
+// root → drink-areas (bebidas only) → categories → products
+// root → categories (comidas) → products
+type AdminView = "root" | "drink-areas" | "categories" | "products";
+
+type AdminModal =
+  | { type: "create-category"; area: MenuAreaSlug }
   | { type: "edit-section"; area: MenuAreaSlug }
   | { type: "edit-category"; categorySlug: string }
-  | { type: "create-product"; categorySlug?: string; parentId?: string; parentType?: CatalogParentType; area?: MenuAreaSlug }
+  | { type: "create-product"; categorySlug: string }
   | { type: "edit-product"; productId: string }
   | null;
+
 type DeleteConfirm = {
   title: string;
   message: string;
@@ -81,165 +48,33 @@ type DeleteConfirm = {
 
 const translationLocales = ["pt", "en", "es"] as const;
 
-type AdminProductsPanelProps = {
-  storeSlug: string;
-  catalog: PublicAreaData[];
-  categories: CatalogDashboardCategory[];
-  sections: CatalogDashboardSection[];
-  products: CatalogDashboardProduct[];
-  initialArea: MenuAreaSlug;
-  initialFoodCategorySlug: string | null;
+const areaLabels: Record<MenuAreaSlug, string> = {
+  "hot-drinks": "Bebidas Quentes",
+  "cold-drinks": "Bebidas Geladas",
+  foods: "Comidas",
 };
 
-const areaLabels = {
-  foods: "Comidas",
-  "hot-drinks": "Bebidas quentes",
-  "cold-drinks": "Bebidas geladas",
-} as const;
-
-const sidebarGroupLabels = {
-  drinks: "Bebidas",
-  foods: "Comidas",
-} as const;
-
-const foodCategoryLabelOverrides = {
-} as const;
-
-function getCategoryTranslationValue(
-  category: CatalogDashboardCategory | null | undefined,
-  locale: "en" | "es",
-  field: "name" | "description",
-) {
-  if (!category) {
-    return "";
-  }
-
-  return (
-    resolveLocalizedText(
-      locale,
-      field === "name"
-        ? {
-            pt: category.namePt,
-            en: category.nameEn,
-            es: category.nameEs,
-          }
-        : {
-            pt: category.descriptionPt,
-            en: category.descriptionEn,
-            es: category.descriptionEs,
-          },
-      {
-        kind: field === "name" ? "category-name" : "category-description",
-        slug: category.slug,
-      },
-    ) ?? ""
-  );
-}
-
-function getSectionTranslationValue(
-  section: CatalogDashboardSection | null | undefined,
-  locale: "en" | "es",
-  field: "name" | "description",
-) {
-  if (!section) {
-    return "";
-  }
-
-  return (
-    resolveLocalizedText(
-      locale,
-      field === "name"
-        ? {
-            pt: section.namePt,
-            en: section.nameEn,
-            es: section.nameEs,
-          }
-        : {
-            pt: section.descriptionPt,
-            en: section.descriptionEn,
-            es: section.descriptionEs,
-          },
-      {
-        kind: field === "name" ? "category-name" : "category-description",
-        slug: section.area,
-      },
-    ) ?? ""
-  );
-}
-
-function getProductTranslationValue(
-  product: CatalogDashboardProduct,
-  locale: "en" | "es",
-  field: "name" | "description" | "highlight",
-) {
-  return (
-    resolveLocalizedText(
-      locale,
-      field === "name"
-        ? {
-            pt: product.namePt,
-            en: product.nameEn,
-            es: product.nameEs,
-          }
-        : field === "description"
-          ? {
-              pt: product.descriptionPt,
-              en: product.descriptionEn,
-              es: product.descriptionEs,
-            }
-          : {
-              pt: product.highlightPt,
-              en: product.highlightEn,
-              es: product.highlightEs,
-            },
-      {
-        kind:
-          field === "name"
-            ? "product-name"
-            : field === "description"
-              ? "product-description"
-              : "product-highlight",
-        slug: product.slug,
-      },
-    ) ?? ""
-  );
-}
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function getCategoryPreviewImage(category: PublicCategory) {
-  return category.sidebarImageUrl ?? category.products.find((product) => product.imageUrl)?.imageUrl ?? null;
+  return category.sidebarImageUrl ?? category.products.find((p) => p.imageUrl)?.imageUrl ?? null;
 }
 
-function getAreaPreviewImage(areaData: PublicAreaData | null | undefined) {
-  return areaData?.categories.map(getCategoryPreviewImage).find(Boolean) ?? null;
+function getAreasPreviewImage(areas: (PublicAreaData | null | undefined)[]) {
+  return areas
+    .filter(Boolean)
+    .flatMap((a) => a!.categories)
+    .map(getCategoryPreviewImage)
+    .find(Boolean) ?? null;
 }
 
-function getRootPreviewImage(areaData: PublicAreaData[]) {
-  return areaData.flatMap((entry) => entry.categories).map(getCategoryPreviewImage).find(Boolean) ?? null;
-}
-
-function buildFoodSidebarItems(areaData: PublicAreaData) {
-  return areaData.categories.map((category) => ({
-    slug: category.slug,
-    label:
-      category.slug in foodCategoryLabelOverrides
-        ? foodCategoryLabelOverrides[category.slug as keyof typeof foodCategoryLabelOverrides]
-        : category.name,
-    imageUrl: getCategoryPreviewImage(category),
-    productCount: category.products.length,
-  }));
-}
-
-function getDashboardProductsForDisplayCategory(
+function getDashboardProducts(
   displayCategory: PublicCategory,
   productsBySlug: Map<string, CatalogDashboardProduct>,
-) {
+): CatalogDashboardProduct[] {
   return displayCategory.products.map((product, index) => {
-    const dashboardProduct = productsBySlug.get(product.slug);
-
-    if (dashboardProduct) {
-      return dashboardProduct;
-    }
-
+    const dash = productsBySlug.get(product.slug);
+    if (dash) return dash;
     return {
       id: product.id,
       slug: product.slug,
@@ -264,110 +99,126 @@ function getDashboardProductsForDisplayCategory(
   });
 }
 
-function getAdminProductTone(area: MenuAreaSlug) {
-  if (area === "cold-drinks") {
-    return "cream" as const;
-  }
-
-  if (area === "hot-drinks") {
-    return "mocha" as const;
-  }
-
+function getProductTone(area: MenuAreaSlug) {
+  if (area === "cold-drinks") return "cream" as const;
+  if (area === "hot-drinks") return "mocha" as const;
   return "amber" as const;
 }
 
-function getLocalizedFieldName(fieldBase: string, locale: TranslationLocale) {
+function catTranslation(
+  category: CatalogDashboardCategory | null | undefined,
+  locale: "en" | "es",
+  field: "name" | "description",
+) {
+  if (!category) return "";
+  return resolveLocalizedText(
+    locale,
+    field === "name"
+      ? { pt: category.namePt, en: category.nameEn, es: category.nameEs }
+      : { pt: category.descriptionPt, en: category.descriptionEn, es: category.descriptionEs },
+    { kind: field === "name" ? "category-name" : "category-description", slug: category.slug },
+  ) ?? "";
+}
+
+function sectionTranslation(
+  section: CatalogDashboardSection | null | undefined,
+  locale: "en" | "es",
+  field: "name" | "description",
+) {
+  if (!section) return "";
+  return resolveLocalizedText(
+    locale,
+    field === "name"
+      ? { pt: section.namePt, en: section.nameEn, es: section.nameEs }
+      : { pt: section.descriptionPt, en: section.descriptionEn, es: section.descriptionEs },
+    { kind: field === "name" ? "category-name" : "category-description", slug: section.area },
+  ) ?? "";
+}
+
+function productTranslation(
+  product: CatalogDashboardProduct,
+  locale: "en" | "es",
+  field: "name" | "description" | "highlight",
+) {
+  return resolveLocalizedText(
+    locale,
+    field === "name"
+      ? { pt: product.namePt, en: product.nameEn, es: product.nameEs }
+      : field === "description"
+        ? { pt: product.descriptionPt, en: product.descriptionEn, es: product.descriptionEs }
+        : { pt: product.highlightPt, en: product.highlightEn, es: product.highlightEs },
+    {
+      kind:
+        field === "name"
+          ? "product-name"
+          : field === "description"
+            ? "product-description"
+            : "product-highlight",
+      slug: product.slug,
+    },
+  ) ?? "";
+}
+
+function localizedName(fieldBase: string, locale: TranslationLocale) {
   return `${fieldBase}${locale.charAt(0).toUpperCase()}${locale.slice(1)}`;
 }
 
-function setGlobalActionFeedback(visible: boolean) {
-  window.dispatchEvent(
-    new CustomEvent(`global-action-feedback:${visible ? "show" : "hide"}`),
-  );
+function fireGlobalFeedback(visible: boolean) {
+  window.dispatchEvent(new CustomEvent(`global-action-feedback:${visible ? "show" : "hide"}`));
 }
 
-async function translateText({
-  text,
-  from,
-  to,
-}: {
-  text: string;
-  from: TranslationLocale;
-  to: TranslationLocale[];
-}) {
+async function callTranslate(text: string, from: TranslationLocale, to: TranslationLocale[]) {
   const response = await fetch("/api/admin/translate", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, from, to }),
   });
-
-  if (!response.ok) {
-    return null;
-  }
-
+  if (!response.ok) return null;
   return (await response.json()) as { translations?: Partial<Record<TranslationLocale, string>> };
 }
 
-async function fillSiblingTranslations(
+async function autoTranslateSiblings(
   control: HTMLInputElement | HTMLTextAreaElement,
   fieldBase: string,
 ) {
   const form = control.form;
   const from = control.dataset.locale as TranslationLocale | undefined;
   const text = control.value.trim();
-
-  if (!form || !from || !text) {
-    return;
-  }
+  if (!form || !from || !text) return;
 
   control.dataset.autoTranslated = "false";
-
-  const targets = translationLocales.filter((locale) => locale !== from);
-  const fieldsToFill = targets
+  const targets = translationLocales.filter((l) => l !== from);
+  const toFill = targets
     .map((locale) => {
-      const field = form.elements.namedItem(getLocalizedFieldName(fieldBase, locale));
+      const field = form.elements.namedItem(localizedName(fieldBase, locale));
       return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
         ? { locale, field }
         : null;
     })
-    .filter((entry): entry is { locale: TranslationLocale; field: HTMLInputElement | HTMLTextAreaElement } => {
-      if (!entry) {
-        return false;
+    .filter(
+      (e): e is { locale: TranslationLocale; field: HTMLInputElement | HTMLTextAreaElement } =>
+        Boolean(e) && (!e!.field.value.trim() || e!.field.dataset.autoTranslated === "true"),
+    );
+
+  if (toFill.length === 0) return;
+
+  fireGlobalFeedback(true);
+  const result = await callTranslate(text, from, toFill.map((e) => e.locale)).finally(() =>
+    fireGlobalFeedback(false),
+  );
+
+  result?.translations &&
+    toFill.forEach(({ locale, field }) => {
+      const translated = result.translations?.[locale]?.trim();
+      if (translated) {
+        field.value = translated;
+        field.dataset.autoTranslated = "true";
+        field.dispatchEvent(new Event("input", { bubbles: true }));
       }
-
-      return !entry.field.value.trim() || entry.field.dataset.autoTranslated === "true";
     });
-
-  if (fieldsToFill.length === 0) {
-    return;
-  }
-
-  setGlobalActionFeedback(true);
-
-  const result = await translateText({
-    text,
-    from,
-    to: fieldsToFill.map((entry) => entry.locale),
-  }).finally(() => {
-    setGlobalActionFeedback(false);
-  });
-
-  if (!result?.translations) {
-    return;
-  }
-
-  fieldsToFill.forEach(({ locale, field }) => {
-    const translated = result.translations?.[locale]?.trim();
-
-    if (translated) {
-      field.value = translated;
-      field.dataset.autoTranslated = "true";
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  });
 }
+
+// ── LocalizedTextFields ───────────────────────────────────────────────────────
 
 function LocalizedTextFields({
   fieldBase,
@@ -389,7 +240,7 @@ function LocalizedTextFields({
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       {translationLocales.map((locale) => {
-        const name = getLocalizedFieldName(fieldBase, locale);
+        const name = localizedName(fieldBase, locale);
         const commonProps = {
           name,
           "data-locale": locale,
@@ -401,10 +252,9 @@ function LocalizedTextFields({
             event.currentTarget.dataset.autoTranslated = "false";
           },
           onBlur: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-            void fillSiblingTranslations(event.currentTarget, fieldBase);
+            void autoTranslateSiblings(event.currentTarget, fieldBase);
           },
         };
-
         return (
           <label key={locale} className="block">
             <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
@@ -418,6 +268,18 @@ function LocalizedTextFields({
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
+type AdminProductsPanelProps = {
+  storeSlug: string;
+  catalog: PublicAreaData[];
+  categories: CatalogDashboardCategory[];
+  sections: CatalogDashboardSection[];
+  products: CatalogDashboardProduct[];
+  initialArea: MenuAreaSlug | null;
+  initialFoodCategorySlug: string | null;
+};
+
 export function AdminProductsPanel({
   storeSlug,
   catalog,
@@ -428,981 +290,448 @@ export function AdminProductsPanel({
   initialFoodCategorySlug,
 }: AdminProductsPanelProps) {
   const router = useRouter();
-  const foodsArea = catalog.find((entry) => entry.area === "foods") ?? null;
-  const drinksAreas = catalog.filter((entry) => entry.area !== "foods");
-  const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea) : [];
-  const availableAreas = catalog.map((entry) => entry.area);
-  const categoriesBySlug = new Map<string, CatalogDashboardCategory>(
-    categories.map((category) => [category.slug, category]),
-  );
-  const productsBySlug = new Map<string, CatalogDashboardProduct>(
-    products.map((product) => [product.slug, product]),
-  );
-  const sectionsByArea = new Map<MenuAreaSlug, CatalogDashboardSection>(
-    sections.map((section) => [section.area, section]),
-  );
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const initialSelectedArea = availableAreas.includes(initialArea)
-    ? initialArea
-    : catalog[0]?.area ?? "hot-drinks";
-  const [selectedSection, setSelectedSection] = useState<CatalogSectionSlug>(
-    initialSelectedArea === "foods" ? "foods" : "drinks",
-  );
-  const [selectedDrinkArea, setSelectedDrinkArea] = useState<MenuAreaSlug>(
-    initialSelectedArea === "foods" ? drinksAreas[0]?.area ?? "hot-drinks" : initialSelectedArea,
-  );
-  const [flowView, setFlowView] = useState<ProductFlowView>(
-    initialSelectedArea === "foods" && initialFoodCategorySlug ? "products" : "root-categories",
+
+  const drinksAreas = catalog.filter((e) => e.area !== "foods");
+  const foodsArea = catalog.find((e) => e.area === "foods") ?? null;
+  const categoriesBySlug = new Map(categories.map((c) => [c.slug, c]));
+  const productsBySlug = new Map(products.map((p) => [p.slug, p]));
+  const sectionsByArea = new Map(sections.map((s) => [s.area, s]));
+
+  // navigation state
+  const initialView: AdminView = (() => {
+    if (initialArea === "foods") return initialFoodCategorySlug ? "products" : "categories";
+    if (catalog.some((e) => e.area === initialArea)) return "categories";
+    return "root";
+  })();
+
+  const [view, setView] = useState<AdminView>(initialView);
+  const [selectedArea, setSelectedArea] = useState<MenuAreaSlug>(
+    initialArea || drinksAreas[0]?.area || "hot-drinks",
   );
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(
-    initialSelectedArea === "foods" ? initialFoodCategorySlug : null,
+    initialArea === "foods" ? initialFoodCategorySlug : null,
   );
-  const [rootCategoryEdits, setRootCategoryEdits] = useState<
-    Partial<Record<CatalogSectionSlug, RootCategoryEdit>>
-  >({});
-  const [rootExtraCategories, setRootExtraCategories] = useState<RootExtraCategory[]>([]);
-  const [modal, setModal] = useState<AdminProductsModal>(null);
+  const [modal, setModal] = useState<AdminModal>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm>(null);
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const storedRootCategories = window.localStorage.getItem(`coffee-root-categories:${storeSlug}`);
-        setRootCategoryEdits(
-          storedRootCategories
-            ? (JSON.parse(storedRootCategories) as Partial<Record<CatalogSectionSlug, RootCategoryEdit>>)
-            : {},
-        );
-      } catch {
-        setRootCategoryEdits({});
-      }
 
-      try {
-        const storedExtraCategories = window.localStorage.getItem(`coffee-root-extra-categories:${storeSlug}`);
-        setRootExtraCategories(storedExtraCategories ? (JSON.parse(storedExtraCategories) as RootExtraCategory[]) : []);
-      } catch {
-        setRootExtraCategories([]);
-      }
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [storeSlug]);
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    params.set("section", "products");
-
-    if (selectedSection === "foods") {
-      params.set("area", "foods");
-
-      if (selectedCategorySlug) {
-        params.set("category", selectedCategorySlug);
-      } else {
-        params.delete("category");
-      }
-    } else {
-      params.set("area", selectedDrinkArea);
-      params.delete("category");
-    }
-
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
-    window.history.replaceState(null, "", nextUrl);
-    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, [selectedCategorySlug, selectedDrinkArea, selectedSection]);
-
-  const displayCategories =
-    selectedSection === "foods"
-      ? foodsArea?.categories ?? []
-      : catalog.find((entry) => entry.area === selectedDrinkArea)?.categories ?? [];
-  const selectedCategory =
-    selectedCategorySlug && displayCategories.some((category) => category.slug === selectedCategorySlug)
-      ? displayCategories.find((category) => category.slug === selectedCategorySlug) ?? null
-      : null;
+  // derived display data
+  const currentAreaData = catalog.find((e) => e.area === selectedArea) ?? null;
+  const displayCategories = currentAreaData?.categories ?? [];
+  const selectedCategory = displayCategories.find((c) => c.slug === selectedCategorySlug) ?? null;
   const selectedCategoryProducts = selectedCategory
-    ? getDashboardProductsForDisplayCategory(selectedCategory, productsBySlug)
+    ? getDashboardProducts(selectedCategory, productsBySlug)
     : [];
-  const activeCatalogLabel = sidebarGroupLabels[selectedSection];
-  const activeSubsectionLabel =
-    selectedSection === "foods"
-      ? sectionsByArea.get("foods")?.namePt ?? "Comidas"
-      : sectionsByArea.get(selectedDrinkArea)?.namePt ?? areaLabels[selectedDrinkArea];
-  const drinksProductCount = drinksAreas.reduce(
-    (total, entry) => total + entry.categories.reduce((areaTotal, category) => areaTotal + category.products.length, 0),
+
+  // product counts
+  const drinkProducts = drinksAreas.reduce(
+    (t, a) => t + a.categories.reduce((at, c) => at + c.products.length, 0),
     0,
   );
-  const foodsProductCount =
-    foodsArea?.categories.reduce((total, category) => total + category.products.length, 0) ?? 0;
-  const activeCatalogProductCount =
-    flowView === "root-categories"
-      ? drinksProductCount + foodsProductCount
-      : flowView === "products" && selectedCategory
-      ? selectedCategoryProducts.length
-      : displayCategories.reduce((total, category) => total + category.products.length, 0);
-  const createCategoryArea =
-    modal?.type === "create-category" && modal.area
-      ? modal.area
-      : selectedSection === "foods"
-        ? "foods"
-        : selectedDrinkArea;
-  const modalCategorySlug =
+  const foodProducts = foodsArea?.categories.reduce((t, c) => t + c.products.length, 0) ?? 0;
+  const currentCount =
+    view === "root"
+      ? drinkProducts + foodProducts
+      : view === "drink-areas"
+        ? drinkProducts
+        : view === "categories"
+          ? displayCategories.reduce((t, c) => t + c.products.length, 0)
+          : selectedCategoryProducts.length;
+
+  // navigation helpers
+  function goBack() {
+    if (view === "products") {
+      setSelectedCategorySlug(null);
+      setView(selectedArea === "foods" ? "categories" : "categories");
+    } else if (view === "categories" && selectedArea !== "foods") {
+      setView("drink-areas");
+    } else {
+      setView("root");
+    }
+  }
+
+  function openCategories(area: MenuAreaSlug) {
+    setSelectedArea(area);
+    setSelectedCategorySlug(null);
+    setView("categories");
+    syncUrl(area, null);
+  }
+
+  function openProducts(categorySlug: string) {
+    setSelectedCategorySlug(categorySlug);
+    setView("products");
+    syncUrl(selectedArea, selectedArea === "foods" ? categorySlug : null);
+  }
+
+  function syncUrl(area: MenuAreaSlug, categorySlug: string | null) {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("section", "products");
+    params.set("area", area);
+    if (categorySlug) params.set("category", categorySlug);
+    else params.delete("category");
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
+
+  // modal data
+  const modalCatSlug =
     modal?.type === "edit-category"
       ? modal.categorySlug
       : modal?.type === "create-product"
-        ? modal.categorySlug ?? null
+        ? modal.categorySlug
         : null;
-  const modalCategoryRecord = modalCategorySlug ? categoriesBySlug.get(modalCategorySlug) ?? null : null;
+  const modalCategoryRecord = modalCatSlug ? categoriesBySlug.get(modalCatSlug) ?? null : null;
   const modalSection = modal?.type === "edit-section" ? sectionsByArea.get(modal.area) ?? null : null;
-  const modalPublicCategory = modalCategorySlug
-    ? catalog.flatMap((entry) => entry.categories).find((category) => category.slug === modalCategorySlug) ??
-      null
+  const modalPublicCategory = modalCatSlug
+    ? catalog.flatMap((e) => e.categories).find((c) => c.slug === modalCatSlug) ?? null
     : null;
   const modalProduct =
     modal?.type === "edit-product"
-      ? products.find((product) => product.id === modal.productId) ??
-        selectedCategoryProducts.find((product) => product.id === modal.productId) ??
-        null
+      ? products.find((p) => p.id === modal.productId) ?? null
       : null;
-  const closeModalOnSubmit = () => {
-    setModal(null);
-  };
-  const productTargetCategories =
-    modal?.type === "create-product"
-      ? catalog
-          .filter((entry) => {
-            if (modal.categorySlug) return entry.categories.some((category) => category.slug === modal.categorySlug);
-            if (modal.parentType === "category") {
-              return selectedSection === "foods" ? entry.area === "foods" : entry.area !== "foods";
-            }
-            if (modal.parentType === "section") return entry.area === modal.area;
-            return true;
-          })
-          .flatMap((entry) => entry.categories)
-      : [];
-  const autoProductCategorySlug = modalCategorySlug ?? productTargetCategories[0]?.slug ?? "";
-  async function createProductAndRefresh(formData: FormData) {
-    const categorySlug = formData.get("categorySlug")?.toString() ?? "";
 
+  // action wrappers
+  async function handleCreateCategory(formData: FormData) {
+    await createCategoryAction(formData);
+    setModal(null);
+    router.refresh();
+  }
+
+  async function handleCreateProduct(formData: FormData) {
+    const catSlug = formData.get("categorySlug")?.toString() ?? "";
     await createProductAction(formData);
     setModal(null);
-
-    if (categorySlug) {
-      const category = catalog.flatMap((entry) => entry.categories).find((item) => item.slug === categorySlug);
-      if (category) {
-        setSelectedSection(category.area === "foods" ? "foods" : "drinks");
-        if (category.area !== "foods") setSelectedDrinkArea(category.area);
-        setSelectedCategorySlug(category.slug);
-        setFlowView("products");
+    if (catSlug) {
+      const cat = catalog.flatMap((e) => e.categories).find((c) => c.slug === catSlug);
+      if (cat) {
+        setSelectedArea(cat.area);
+        setSelectedCategorySlug(cat.slug);
+        setView("products");
       }
     }
-
     router.refresh();
   }
-  function openCreateCategoryModal(input?: {
-    nodeType?: Extract<CatalogNodeType, "category" | "section" | "subsection">;
-    parentId?: string;
-    parentType?: CatalogParentType;
-    area?: MenuAreaSlug;
-  }) {
-    setModal({
-      type: "create-category",
-      nodeType: input?.nodeType ?? "category",
-      parentId: input?.parentId ?? storeSlug,
-      parentType: input?.parentType ?? "root",
-      area: input?.area ?? createCategoryArea,
-    });
-  }
-  async function createCategoryAndRefresh(formData: FormData) {
-    const area = (formData.get("area")?.toString() as MenuAreaSlug | undefined) ?? createCategoryArea;
-    const nodeType = (formData.get("type")?.toString() as CatalogNodeType | undefined) ?? "subsection";
-    const created = await createCategoryAction(formData);
 
-    setModal(null);
-    if (created && nodeType === "category") {
-      const next = [
-        ...rootExtraCategories.filter((category) => category.slug !== created.slug),
-        {
-          slug: created.slug,
-          name: created.namePt,
-          area: created.area,
-          imageUrl: created.sidebarImageUrl,
-          productCount: created.productCount,
-        },
-      ];
-
-      setRootExtraCategories(next);
-      window.localStorage.setItem(`coffee-root-extra-categories:${storeSlug}`, JSON.stringify(next));
-    }
-    if (nodeType === "category" || nodeType === "section") {
-      setSelectedSection(area === "foods" ? "foods" : "drinks");
-      if (area !== "foods") setSelectedDrinkArea(area);
-      setSelectedCategorySlug(null);
-      setFlowView("sections");
-    } else if (area === "foods") {
-      setSelectedSection("foods");
-      setSelectedCategorySlug(null);
-      setFlowView("sections");
-    } else {
-      setSelectedSection("drinks");
-      setSelectedDrinkArea(area);
-      setSelectedCategorySlug(null);
-      setFlowView("categories");
-    }
-    router.refresh();
-  }
-  const drinksRootName = rootCategoryEdits.drinks?.name || "Bebidas";
-  const foodsRootName = rootCategoryEdits.foods?.name || "Comidas";
-  const drinksRootImage = rootCategoryEdits.drinks?.imageUrl || getRootPreviewImage(drinksAreas);
-  const foodsRootImage = rootCategoryEdits.foods?.imageUrl || getAreaPreviewImage(foodsArea);
-  const getRootDefaults = (section: CatalogSectionSlug) => rootCategoryEdits[section] ?? {
-    name: section === "drinks" ? "Bebidas" : "Comidas",
-    imageUrl: section === "drinks" ? getRootPreviewImage(drinksAreas) ?? "" : getAreaPreviewImage(foodsArea) ?? "",
-    accentColor: "#c96b3f",
-    isActive: true,
-  };
-
-  function saveRootCategoryEdit(formData: FormData, section: CatalogSectionSlug) {
-    const next = {
-      ...rootCategoryEdits,
-      [section]: {
-        name: formData.get("namePt")?.toString().trim() || (section === "drinks" ? "Bebidas" : "Comidas"),
-        nameEn: formData.get("nameEn")?.toString() ?? "",
-        nameEs: formData.get("nameEs")?.toString() ?? "",
-        descriptionPt: formData.get("descriptionPt")?.toString() ?? "",
-        descriptionEn: formData.get("descriptionEn")?.toString() ?? "",
-        descriptionEs: formData.get("descriptionEs")?.toString() ?? "",
-        imageUrl: formData.get("sidebarImageUrl")?.toString() ?? "",
-        accentColor: formData.get("accentColor")?.toString() ?? "#c96b3f",
-        isActive: formData.get("isActive") === "on",
-      },
-    };
-
-    setRootCategoryEdits(next);
-    window.localStorage.setItem(`coffee-root-categories:${storeSlug}`, JSON.stringify(next));
-    setModal(null);
-  }
-  async function confirmDelete(formData: FormData) {
+  async function handleDeleteConfirm(formData: FormData) {
     if (!deleteConfirm) return;
-
     await deleteConfirm.action(formData);
-    const categorySlug = formData.get("categorySlug")?.toString();
-    if (categorySlug) {
-      const next = rootExtraCategories.filter((category) => category.slug !== categorySlug);
-      setRootExtraCategories(next);
-      window.localStorage.setItem(`coffee-root-extra-categories:${storeSlug}`, JSON.stringify(next));
-    }
     setDeleteConfirm(null);
     setModal(null);
     router.refresh();
   }
 
+  // breadcrumb
+  const crumbs: { label: string; onClick?: () => void }[] = [];
+  if (view !== "root") {
+    crumbs.push({ label: "Categorias", onClick: () => setView("root") });
+  }
+  if (view === "drink-areas") {
+    crumbs.push({ label: "Bebidas" });
+  }
+  if (view === "categories" && selectedArea !== "foods") {
+    crumbs.push({ label: "Bebidas", onClick: () => setView("drink-areas") });
+    crumbs.push({ label: sectionsByArea.get(selectedArea)?.namePt ?? areaLabels[selectedArea] });
+  }
+  if (view === "categories" && selectedArea === "foods") {
+    crumbs.push({ label: "Comidas" });
+  }
+  if (view === "products") {
+    if (selectedArea !== "foods") {
+      crumbs.push({ label: "Bebidas", onClick: () => setView("drink-areas") });
+      crumbs.push({
+        label: sectionsByArea.get(selectedArea)?.namePt ?? areaLabels[selectedArea],
+        onClick: () => {
+          setSelectedCategorySlug(null);
+          setView("categories");
+        },
+      });
+    } else {
+      crumbs.push({
+        label: "Comidas",
+        onClick: () => {
+          setSelectedCategorySlug(null);
+          setView("categories");
+        },
+      });
+    }
+    crumbs.push({ label: selectedCategory?.name ?? "" });
+  }
+
+  const pageTitle =
+    view === "root"
+      ? "Categorias"
+      : view === "drink-areas"
+        ? "Bebidas"
+        : view === "categories"
+          ? sectionsByArea.get(selectedArea)?.namePt ?? areaLabels[selectedArea]
+          : selectedCategory?.name ?? "Produtos";
+
+  const sectionName = (area: MenuAreaSlug) =>
+    sectionsByArea.get(area)?.namePt ?? areaLabels[area];
+
   return (
     <div className="pb-1">
       <section className="overflow-hidden rounded-[18px] border border-[#c6c6c6]/50 bg-white/70 p-4">
-        <div className="min-h-[360px]">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-normal text-[#878181]">
-                {flowView === "root-categories"
-                  ? "Gestão de produtos"
-                  : flowView === "sections"
-                    ? "Categorias"
-                  : flowView === "categories"
-                    ? activeCatalogLabel
-                    : selectedCategory?.name ?? activeSubsectionLabel}
-              </p>
-              <h2 className="mt-2 text-4xl font-normal leading-none text-black">
-                {flowView === "root-categories"
-                  ? "Categorias"
-                  : flowView === "sections"
-                    ? "Seções"
-                  : flowView === "categories"
-                    ? "Subseções"
-                    : "Produtos"}
-              </h2>
-            </div>
-            <div className="grid min-w-[126px] gap-2">
-              <span className="rounded-[14px] border border-[#c6c6c6] bg-[#ff972e] px-4 py-2 text-center text-3xl font-normal leading-none text-white">
-                {activeCatalogProductCount} <span className="align-middle text-xl">produtos</span>
-              </span>
-              {flowView !== "root-categories" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (flowView === "products" && selectedSection === "drinks") {
-                      setFlowView("categories");
-                    } else if (flowView === "products" && selectedSection === "foods") {
-                      setFlowView("sections");
-                    } else if (flowView === "categories") {
-                      setFlowView("sections");
-                    } else {
-                      setFlowView("root-categories");
-                    }
-                  }}
-                  className="rounded-[14px] border border-[#c6c6c6]/70 bg-white/70 px-5 py-2 text-base font-normal text-[#747171]"
-                >
-                  Voltar
-                </button>
-              ) : null}
-            </div>
+        {/* ── header ── */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            {crumbs.length > 0 && (
+              <nav className="mb-2 flex flex-wrap items-center gap-1 text-sm text-[#878181]">
+                {crumbs.map((crumb, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-[#c6c6c6]">/</span>}
+                    {crumb.onClick ? (
+                      <button
+                        type="button"
+                        onClick={crumb.onClick}
+                        className="transition hover:text-black"
+                      >
+                        {crumb.label}
+                      </button>
+                    ) : (
+                      <span className="font-medium text-black">{crumb.label}</span>
+                    )}
+                  </span>
+                ))}
+              </nav>
+            )}
+            <h2 className="text-3xl font-normal leading-none text-black">{pageTitle}</h2>
           </div>
 
-          {flowView === "root-categories" ? (
-            <div ref={contentRef} className="mt-8 grid grid-cols-1 gap-3">
-              <article className="relative min-h-[112px] overflow-hidden rounded-[18px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSection("drinks");
-                    setSelectedCategorySlug(null);
-                    setFlowView("sections");
-                  }}
-                  className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
-                >
-                  <SectionArt label={drinksRootName} area="cold-drinks" imageUrl={drinksRootImage} />
-                  <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
-                    <span className="text-xl font-normal leading-tight">{drinksRootName}</span>
-                    <span className="mt-1 text-xs font-normal text-white">
-                      {drinksAreas.length} seções · {drinksProductCount} produtos
-                    </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModal({ type: "edit-root-category", section: "drinks" })}
-                  className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                >
-                  Editar
-                </button>
-              </article>
-
-              <article className="relative min-h-[112px] overflow-hidden rounded-[18px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSection("foods");
-                    setSelectedCategorySlug(null);
-                    setFlowView("sections");
-                  }}
-                  className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
-                >
-                  <SectionArt label={foodsRootName} area="foods" imageUrl={foodsRootImage} />
-                  <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
-                    <span className="text-xl font-normal leading-tight">{foodsRootName}</span>
-                    <span className="mt-1 text-xs font-normal text-white">
-                      {foodSidebarItems.length} seções · {foodsProductCount} produtos
-                    </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModal({ type: "edit-root-category", section: "foods" })}
-                  className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                >
-                  Editar
-                </button>
-              </article>
-
-              {rootExtraCategories.map((category) => (
-                <article key={category.slug} className="relative min-h-[112px] overflow-hidden rounded-[18px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSection(category.area === "foods" ? "foods" : "drinks");
-                      if (category.area !== "foods") setSelectedDrinkArea(category.area);
-                      setSelectedCategorySlug(category.slug);
-                      setFlowView("products");
-                    }}
-                    className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
-                  >
-                    <SectionArt label={category.name} area={category.area} imageUrl={category.imageUrl} />
-                    <span className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3 text-white">
-                      <span className="text-xl font-normal leading-tight">{category.name}</span>
-                      <span className="mt-1 text-xs font-normal text-white">
-                        {category.productCount} produtos
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModal({ type: "edit-category", categorySlug: category.slug })}
-                    className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                  >
-                    Editar
-                  </button>
-                </article>
-              ))}
-
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <span className="rounded-[14px] border border-[#c6c6c6] bg-[#ff972e] px-4 py-2 text-center text-2xl font-normal leading-none text-white">
+              {currentCount}
+              <span className="ml-1 align-middle text-sm">produtos</span>
+            </span>
+            {view !== "root" && (
               <button
                 type="button"
-                onClick={() =>
-                  openCreateCategoryModal({
-                    nodeType: "category",
-                    parentId: storeSlug,
-                    parentType: "root",
-                    area: createCategoryArea,
-                  })
-                }
-                className="flex min-h-[120px] items-center justify-center rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 text-2xl font-bold leading-none text-[#ff943c]"
-                aria-label="Adicionar categoria"
+                onClick={goBack}
+                className="rounded-[14px] border border-[#c6c6c6]/70 bg-white/70 px-4 py-2 text-sm font-normal text-[#747171] transition hover:bg-white"
               >
-                +
+                ← Voltar
               </button>
-            </div>
-          ) : null}
-
-          {flowView === "sections" ? (
-            <div ref={contentRef} className="mt-8">
-              {selectedSection === "drinks" ? (
-                <>
-                  <div className="mb-5">
-                    <h3 className="text-4xl font-normal text-black">Bebidas</h3>
-                  </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {drinksAreas.map((areaData) => (
-                    <button
-                      key={areaData.area}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSection("drinks");
-                        setSelectedDrinkArea(areaData.area);
-                        setSelectedCategorySlug(null);
-                        setFlowView("categories");
-                      }}
-                      className="relative min-h-[96px] overflow-hidden rounded-[18px] text-left transition hover:-translate-y-[1px]"
-                    >
-                      <SectionArt
-                        label={sectionsByArea.get(areaData.area)?.namePt ?? areaLabels[areaData.area]}
-                        area={areaData.area}
-                        imageUrl={sectionsByArea.get(areaData.area)?.imageUrl ?? getAreaPreviewImage(areaData)}
-                      />
-                      <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                        <span className="text-sm font-normal leading-tight">
-                          {sectionsByArea.get(areaData.area)?.namePt ?? areaLabels[areaData.area]}
-                        </span>
-                        <span className="mt-1 text-xs font-normal text-white">
-                          {areaData.categories.length} subseções
-                        </span>
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setModal({ type: "edit-section", area: areaData.area });
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setModal({ type: "edit-section", area: areaData.area });
-                          }
-                        }}
-                        className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                      >
-                        Editar
-                      </span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSection("drinks");
-                      setModal({
-                        type: "choose-child",
-                        parentId: "drinks",
-                        parentType: "category",
-                        area: selectedDrinkArea,
-                      });
-                    }}
-                    className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
-                    aria-label="Adicionar seção em Bebidas"
-                  >
-                    +
-                  </button>
-                </div>
-                </>
-              ) : (
-                <>
-                  <div className="mb-5">
-                  <h3 className="text-4xl font-normal text-black">Comidas</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {foodSidebarItems.map((item) => (
-                    <article key={item.slug} className="relative min-h-[96px] overflow-hidden rounded-[18px]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedSection("foods");
-                          setSelectedCategorySlug(item.slug);
-                          setFlowView("products");
-                        }}
-                        className="absolute inset-0 text-left"
-                      >
-                        <SectionArt label={item.label} area="foods" imageUrl={item.imageUrl} />
-                        <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                          <span className="text-sm font-normal leading-tight">{item.label}</span>
-                          <span className="mt-1 text-xs font-normal text-white">
-                            {item.productCount} produtos
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModal({ type: "edit-category", categorySlug: item.slug })}
-                        className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                      >
-                        Editar
-                      </button>
-                    </article>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSection("foods");
-                      setModal({
-                        type: "choose-child",
-                        parentId: "foods",
-                        parentType: "category",
-                        area: "foods",
-                      });
-                    }}
-                    className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
-                    aria-label="Adicionar seção em Comidas"
-                  >
-                    +
-                  </button>
-                </div>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {flowView === "categories" ? (
-            <div ref={contentRef} className="mt-8">
-              <p className="mb-5 text-4xl font-normal text-black">
-                {activeSubsectionLabel}
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                {displayCategories.map((category) => (
-                  <article key={category.slug} className="relative min-h-[96px] overflow-hidden rounded-[18px]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategorySlug(category.slug);
-                        setFlowView("products");
-                      }}
-                      className="absolute inset-0 text-left"
-                    >
-                      <SectionArt
-                        label={category.name}
-                        area={category.area}
-                        imageUrl={getCategoryPreviewImage(category)}
-                      />
-                      <span className="relative z-10 flex h-full min-h-[96px] flex-col justify-end p-2.5 text-white">
-                        <span className="text-sm font-normal leading-tight">{category.name}</span>
-                        <span className="mt-1 text-xs font-normal text-white">
-                          {category.products.length} produtos
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModal({ type: "edit-category", categorySlug: category.slug })}
-                      className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                    >
-                      Editar
-                    </button>
-                  </article>
-                ))}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModal({
-                      type: "choose-child",
-                      parentId: selectedDrinkArea,
-                      parentType: "section",
-                      area: createCategoryArea,
-                    })
-                  }
-                  className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {flowView === "products" && selectedCategory ? (
-            <div ref={contentRef} className="mt-8">
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <p className="text-4xl font-normal text-black">
-                  {selectedCategory.name}
-                </p>
-                <div className="hidden items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setModal({ type: "edit-category", categorySlug: selectedCategory.slug })}
-                    className="rounded-full border border-[var(--line)] bg-white/88 px-3 py-2 text-xs font-semibold text-[var(--espresso)]"
-                  >
-                    Editar esta categoria
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setModal({
-                        type: "choose-child",
-                        parentId: selectedCategory.id,
-                        parentType: "subsection",
-                        area: selectedCategory.area,
-                        categorySlug: selectedCategory.slug,
-                      })
-                    }
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[rgba(227,106,47,0.42)] bg-white/88 text-xl font-semibold leading-none text-[var(--brand-strong)]"
-                    aria-label="Adicionar produto"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {selectedCategoryProducts.map((product) => (
-                  <article
-                    key={product.id}
-                    className="relative min-h-[96px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/60 bg-white/88"
-                  >
-                    <div className="absolute inset-0">
-                      <ProductArt
-                        title={product.namePt}
-                        tone={getAdminProductTone(selectedCategory.area)}
-                        area={selectedCategory.area}
-                        imageUrl={product.imageUrl}
-                        size="admin-card"
-                      />
-                    </div>
-                    <div className="absolute inset-x-0 bottom-0 z-10 bg-[rgba(55,52,48,0.78)] p-2 text-white">
-                      <h3 className="line-clamp-2 text-sm font-normal leading-tight">
-                        {product.namePt}
-                      </h3>
-                      <p className="mt-1 text-sm font-normal">
-                        {formatMoney(product.price, "pt")}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setModal({ type: "edit-product", productId: product.id })}
-                      className="absolute right-2 top-2 z-20 rounded-[18px] border border-white bg-[#ff943c] px-3 py-1.5 text-xs font-normal text-white"
-                    >
-                      Editar
-                    </button>
-                    <form action={deleteProductAction} className="hidden">
-                      <input type="hidden" name="storeSlug" value={storeSlug} />
-                      <input type="hidden" name="productId" value={product.id} />
-                      <button
-                        type="submit"
-                        className="rounded-full bg-white/86 px-4 py-2 text-xs font-semibold text-[var(--tone-berry)]"
-                      >
-                        Excluir
-                      </button>
-                    </form>
-                  </article>
-                ))}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModal({
-                      type: "choose-child",
-                      parentId: selectedCategory.id,
-                      parentType: "subsection",
-                      area: selectedCategory.area,
-                      categorySlug: selectedCategory.slug,
-                    })
-                  }
-                  className="min-h-[96px] rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 p-3 text-2xl font-bold leading-none text-[#ff943c]"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          ) : null}
+            )}
+          </div>
         </div>
+
+        {/* ── root: Bebidas + Comidas ── */}
+        {view === "root" && (
+          <div className="mt-6 grid gap-3">
+            <RootCard
+              label="Bebidas"
+              subtitle={`${drinksAreas.reduce((t, a) => t + a.categories.length, 0)} categorias · ${drinkProducts} produtos`}
+              area="hot-drinks"
+              imageUrl={getAreasPreviewImage(drinksAreas)}
+              onClick={() => setView("drink-areas")}
+            />
+            <RootCard
+              label="Comidas"
+              subtitle={`${foodsArea?.categories.length ?? 0} categorias · ${foodProducts} produtos`}
+              area="foods"
+              imageUrl={getAreasPreviewImage(foodsArea ? [foodsArea] : [])}
+              onClick={() => openCategories("foods")}
+            />
+          </div>
+        )}
+
+        {/* ── drink areas: Bebidas Quentes + Bebidas Geladas ── */}
+        {view === "drink-areas" && (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {drinksAreas.map((areaData) => (
+              <article
+                key={areaData.area}
+                className="relative min-h-[104px] overflow-hidden rounded-[18px]"
+              >
+                <button
+                  type="button"
+                  onClick={() => openCategories(areaData.area)}
+                  className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
+                >
+                  <SectionArt
+                    label={sectionName(areaData.area)}
+                    area={areaData.area}
+                    imageUrl={sectionsByArea.get(areaData.area)?.imageUrl ?? getAreasPreviewImage([areaData])}
+                  />
+                  <span className="relative z-10 flex h-full min-h-[104px] flex-col justify-end p-3 text-white">
+                    <span className="text-base font-medium leading-tight">{sectionName(areaData.area)}</span>
+                    <span className="mt-0.5 text-xs text-white/75">
+                      {areaData.categories.length} categorias ·{" "}
+                      {areaData.categories.reduce((t, c) => t + c.products.length, 0)} produtos
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModal({ type: "edit-section", area: areaData.area })}
+                  className="absolute right-2 top-2 z-20 rounded-full border border-white/30 bg-black/35 px-3 py-1 text-xs text-white backdrop-blur-sm transition hover:bg-black/55"
+                >
+                  Editar
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {/* ── categories ── */}
+        {view === "categories" && (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {displayCategories.map((category) => (
+              <article
+                key={category.slug}
+                className="relative min-h-[104px] overflow-hidden rounded-[18px]"
+              >
+                <button
+                  type="button"
+                  onClick={() => openProducts(category.slug)}
+                  className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
+                >
+                  <SectionArt
+                    label={category.name}
+                    area={category.area}
+                    imageUrl={getCategoryPreviewImage(category)}
+                  />
+                  <span className="relative z-10 flex h-full min-h-[104px] flex-col justify-end p-3 text-white">
+                    <span className="text-base font-medium leading-tight">{category.name}</span>
+                    <span className="mt-0.5 text-xs text-white/75">{category.products.length} produtos</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModal({ type: "edit-category", categorySlug: category.slug })}
+                  className="absolute right-2 top-2 z-20 rounded-full border border-white/30 bg-black/35 px-3 py-1 text-xs text-white backdrop-blur-sm transition hover:bg-black/55"
+                >
+                  Editar
+                </button>
+              </article>
+            ))}
+            <button
+              type="button"
+              onClick={() => setModal({ type: "create-category", area: selectedArea })}
+              className="flex min-h-[104px] items-center justify-center rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 text-3xl font-light text-[#ff943c] transition hover:bg-white/80"
+              aria-label="Nova categoria"
+            >
+              +
+            </button>
+          </div>
+        )}
+
+        {/* ── products ── */}
+        {view === "products" && selectedCategory && (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {selectedCategoryProducts.map((product) => (
+              <article
+                key={product.id}
+                className="relative min-h-[104px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/60"
+              >
+                <div className="absolute inset-0">
+                  <ProductArt
+                    title={product.namePt}
+                    tone={getProductTone(selectedCategory.area)}
+                    area={selectedCategory.area}
+                    imageUrl={product.imageUrl}
+                    size="admin-card"
+                  />
+                </div>
+                <div className="absolute inset-x-0 bottom-0 z-10 bg-[rgba(30,18,10,0.72)] px-2.5 py-2 text-white">
+                  <h3 className="line-clamp-2 text-sm font-normal leading-tight">{product.namePt}</h3>
+                  <p className="mt-0.5 text-xs opacity-85">{formatMoney(product.price, "pt")}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModal({ type: "edit-product", productId: product.id })}
+                  className="absolute right-2 top-2 z-20 rounded-full border border-white/30 bg-black/35 px-3 py-1 text-xs text-white backdrop-blur-sm transition hover:bg-black/55"
+                >
+                  Editar
+                </button>
+              </article>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                setModal({ type: "create-product", categorySlug: selectedCategory.slug })
+              }
+              className="flex min-h-[104px] items-center justify-center rounded-[18px] border border-dashed border-[#ff943c] bg-white/50 text-3xl font-light text-[#ff943c] transition hover:bg-white/80"
+              aria-label="Novo produto"
+            >
+              +
+            </button>
+          </div>
+        )}
       </section>
 
-      {modal ? (
+      {/* ── modals ── */}
+      {modal && (
         <div
           className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-[#f8eee3] p-3 py-8"
           role="dialog"
           aria-modal="true"
         >
-          <div data-product-modal className="w-full max-w-[640px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/70 bg-white/70">
-            <div className="flex items-center justify-between gap-4 border-b border-[#c6c6c6]/70 px-7 py-5">
-              <h2 className="text-2xl font-bold text-black">
-                {modal.type === "choose-child"
-                  ? "O que deseja criar?"
-                  : modal.type === "create-category"
-                    ? modal.nodeType === "category"
-                      ? "Nova categoria"
-                      : modal.nodeType === "section"
-                        ? "Nova seção"
-                        : `Nova subseção em ${activeCatalogLabel}`
-                  : modal.type === "edit-root-category"
-                    ? "Editar categoria"
+          <div className="w-full max-w-[640px] overflow-hidden rounded-[18px] border border-[#c6c6c6]/70 bg-white/70">
+            <div className="flex items-center justify-between gap-4 border-b border-[#c6c6c6]/70 px-6 py-5">
+              <h2 className="text-xl font-bold text-black">
+                {modal.type === "create-category"
+                  ? `Nova categoria — ${sectionName(modal.area)}`
                   : modal.type === "edit-section"
-                    ? "Editar seção"
-                  : modal.type === "edit-category"
-                    ? "Editar subseção"
-                    : modal.type === "create-product"
-                      ? "Novo produto"
-                      : "Editar produto"}
+                    ? `Editar — ${sectionName(modal.area)}`
+                    : modal.type === "edit-category"
+                      ? "Editar categoria"
+                      : modal.type === "create-product"
+                        ? "Novo produto"
+                        : "Editar produto"}
               </h2>
               <button
                 type="button"
                 onClick={() => setModal(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#c6c6c6]/70 bg-white text-lg font-bold leading-none text-black"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#c6c6c6]/70 bg-white text-lg font-bold leading-none text-black"
                 aria-label="Fechar"
               >
                 ×
               </button>
             </div>
 
-            <div className="no-scrollbar max-h-[calc(100vh-120px)] overflow-y-auto p-7">
-              {modal.type === "choose-child" ? (
-                <div className="grid gap-3">
-                  <p className="text-sm font-semibold text-[#747171]">O que deseja criar?</p>
-                  {modal.parentType === "subsection" && modal.categorySlug ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModal({
-                          type: "create-product",
-                          categorySlug: modal.categorySlug as string,
-                          parentId: modal.parentId,
-                          parentType: modal.parentType,
-                        })
-                      }
-                      className="btn-primary w-full"
-                    >
-                      Criar Produto
-                    </button>
-                  ) : null}
-                  {modal.parentType === "section" ? (
-                    <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openCreateCategoryModal({
-                          nodeType: "subsection",
-                          parentId: modal.parentId,
-                          parentType: modal.parentType,
-                          area: modal.area,
-                        })
-                      }
-                      className="btn-primary w-full"
-                    >
-                      Criar Subseção
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModal({
-                          type: "create-product",
-                          parentId: modal.parentId,
-                          parentType: modal.parentType,
-                          area: modal.area,
-                        })
-                      }
-                      className="btn-primary w-full"
-                    >
-                      Criar Produto
-                    </button>
-                    </>
-                  ) : null}
-                  {modal.parentType === "category" ? (
-                    <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openCreateCategoryModal({
-                          nodeType: "section",
-                          parentId: modal.parentId,
-                          parentType: modal.parentType,
-                          area: modal.area,
-                        })
-                      }
-                      className="btn-primary w-full"
-                    >
-                      Criar Seção
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModal({
-                          type: "create-product",
-                          parentId: modal.parentId,
-                          parentType: modal.parentType,
-                          area: modal.area,
-                        })
-                      }
-                      className="btn-primary w-full"
-                    >
-                      Criar Produto
-                    </button>
-                    </>
-                  ) : null}
-                  <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
-                    Cancelar
-                  </button>
-                </div>
-              ) : null}
-
-              {modal.type === "edit-root-category" ? (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    saveRootCategoryEdit(new FormData(event.currentTarget), modal.section);
-                  }}
-                  className="grid gap-4"
-                >
-                  <input type="hidden" name="type" value="category" />
-                  <input type="hidden" name="parentId" value={storeSlug} />
-                  <input type="hidden" name="parentType" value="root" />
-                  <input type="hidden" name="area" value={modal.section === "foods" ? "foods" : "hot-drinks"} />
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-                    <div className="grid gap-4">
-                      <LocalizedTextFields
-                        fieldBase="name"
-                        labels={{ pt: "Nome PT", en: "Name EN", es: "Nombre ES" }}
-                        defaultValues={{
-                          pt: getRootDefaults(modal.section).name,
-                          en: getRootDefaults(modal.section).nameEn ?? "",
-                          es: getRootDefaults(modal.section).nameEs ?? "",
-                        }}
-                        requiredPt
-                      />
-                      <LocalizedTextFields
-                        fieldBase="description"
-                        labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
-                        defaultValues={{
-                          pt: getRootDefaults(modal.section).descriptionPt ?? "",
-                          en: getRootDefaults(modal.section).descriptionEn ?? "",
-                          es: getRootDefaults(modal.section).descriptionEs ?? "",
-                        }}
-                        textarea
-                      />
-                      <div className="grid gap-4">
-                        <label className="block">
-                          <span>Posição</span>
-                          <select name="placement" className="select" defaultValue="LAST">
-                            <option value="FIRST">Primeira da lista</option>
-                            <option value="LAST">Última da lista</option>
-                          </select>
-                        </label>
-                      </div>
-                      <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
-                        <input type="checkbox" name="isActive" defaultChecked={getRootDefaults(modal.section).isActive ?? true} />
-                        <span>Seção ativa na vitrine</span>
-                      </label>
-                    </div>
-                    <div className="grid gap-4">
-                      <ImageUploadField
-                        name="sidebarImageUrl"
-                        label="Imagem da seção"
-                        defaultValue={getRootDefaults(modal.section).imageUrl}
-                        previewClassName="aspect-square rounded-[18px]"
-                        cropAspectRatio={1}
-                      />
-                      <ColorField name="accentColor" label="Cor da seção" defaultValue={getRootDefaults(modal.section).accentColor ?? "#c96b3f"} />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDeleteConfirm({
-                        title: "Excluir categoria?",
-                        message: "Isso remove apenas a personalização desta categoria raiz.",
-                        fields: {},
-                        action: async () => {
-                          const next = { ...rootCategoryEdits };
-                          delete next[modal.section];
-                          setRootCategoryEdits(next);
-                          window.localStorage.setItem(`coffee-root-categories:${storeSlug}`, JSON.stringify(next));
-                        },
-                      })
-                    }
-                    className="btn-secondary w-full border-red-500 text-red-600"
-                  >
-                    Excluir
-                  </button>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <button type="submit" className="btn-primary w-full">
-                      Salvar
-                    </button>
-                    <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full border-red-500 text-red-600">
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-
-              {modal.type === "create-category" ? (
-                <form action={createCategoryAndRefresh} className="grid gap-4">
+            <div className="no-scrollbar max-h-[calc(100vh-120px)] overflow-y-auto p-6">
+              {/* create category */}
+              {modal.type === "create-category" && (
+                <form action={handleCreateCategory} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="type" value={modal.nodeType ?? "subsection"} />
-                  <input type="hidden" name="parentId" value={modal.parentId ?? ""} />
-                  <input type="hidden" name="parentType" value={modal.parentType ?? "section"} />
-                  <input type="hidden" name="area" value={createCategoryArea} />
-
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+                  <input type="hidden" name="area" value={modal.area} />
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <div className="grid gap-4">
                       <LocalizedTextFields
                         fieldBase="name"
                         labels={{ pt: "Nome PT", en: "Name EN", es: "Nombre ES" }}
-                        placeholders={{
-                          pt: "Bebidas especiais",
-                          en: "Signature drinks",
-                          es: "Bebidas especiales",
-                        }}
+                        placeholders={{ pt: "Ex: Cafés especiais" }}
                         requiredPt
                       />
                       <LocalizedTextFields
                         fieldBase="description"
-                        labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
-                        placeholders={{
-                          pt: "Como essa nova seção aparece na vitrine.",
-                          en: "How this section appears on the storefront.",
-                          es: "Como aparece esta seccion en la vitrina.",
-                        }}
+                        labels={{ pt: "Descrição PT", en: "Description EN", es: "Descripción ES" }}
                         textarea
+                        minHeightClass="min-h-20"
                       />
-                      <div className="grid gap-4">
-                        <label className="block">
-                          <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                            Posição
-                          </span>
-                          <select name="placement" className="select" defaultValue="LAST">
-                            <option value="FIRST">Primeira da lista</option>
-                            <option value="LAST">Última da lista</option>
-                          </select>
-                        </label>
-                      </div>
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
+                          Posição
+                        </span>
+                        <select name="placement" className="select" defaultValue="LAST">
+                          <option value="FIRST">Primeira da lista</option>
+                          <option value="LAST">Última da lista</option>
+                        </select>
+                      </label>
                       <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
                         <input type="checkbox" name="isActive" defaultChecked />
                         <span className="text-sm font-semibold text-[var(--espresso)]">
-                          Seção ativa na vitrine
+                          Ativa na vitrine
                         </span>
                       </label>
                     </div>
                     <div className="grid gap-4">
                       <ImageUploadField
                         name="sidebarImageUrl"
-                        label="Imagem da seção"
-                        description="Essa imagem pode aparecer na navegação lateral e já é otimizada automaticamente."
+                        label="Imagem"
                         previewClassName="aspect-square rounded-[18px]"
                         cropAspectRatio={1}
                       />
-                      <ColorField name="accentColor" label="Cor da seção" defaultValue="#c96b3f" />
                     </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1414,66 +743,64 @@ export function AdminProductsPanel({
                     </button>
                   </div>
                 </form>
-              ) : null}
+              )}
 
-              {modal.type === "edit-section" ? (
-                <form action={updateCatalogSectionAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
+              {/* edit section (area) */}
+              {modal.type === "edit-section" && (
+                <form
+                  action={updateCatalogSectionAction}
+                  onSubmit={() => setModal(null)}
+                  className="grid gap-4"
+                >
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="type" value="section" />
-                  <input type="hidden" name="parentId" value={modal.area === "foods" ? "foods" : "drinks"} />
-                  <input type="hidden" name="parentType" value="category" />
                   <input type="hidden" name="area" value={modal.area} />
-
                   <LocalizedTextFields
                     fieldBase="name"
                     labels={{ pt: "Nome PT", en: "Name EN", es: "Nombre ES" }}
                     defaultValues={{
                       pt: modalSection?.namePt ?? areaLabels[modal.area],
-                      en: getSectionTranslationValue(modalSection, "en", "name"),
-                      es: getSectionTranslationValue(modalSection, "es", "name"),
+                      en: sectionTranslation(modalSection, "en", "name"),
+                      es: sectionTranslation(modalSection, "es", "name"),
                     }}
                     requiredPt
                   />
                   <LocalizedTextFields
                     fieldBase="description"
-                    labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
+                    labels={{ pt: "Descrição PT", en: "Description EN", es: "Descripción ES" }}
                     defaultValues={{
                       pt: modalSection?.descriptionPt ?? "",
-                      en: getSectionTranslationValue(modalSection, "en", "description"),
-                      es: getSectionTranslationValue(modalSection, "es", "description"),
+                      en: sectionTranslation(modalSection, "en", "description"),
+                      es: sectionTranslation(modalSection, "es", "description"),
                     }}
                     textarea
+                    minHeightClass="min-h-20"
                   />
                   <ImageUploadField
                     name="imageUrl"
-                    label="Imagem da seção"
-                    defaultValue={modalSection?.imageUrl ?? getAreaPreviewImage(catalog.find((entry) => entry.area === modal.area))}
-                    description="Essa imagem aparece nos cards administrativos da seção."
+                    label="Imagem"
+                    defaultValue={
+                      modalSection?.imageUrl ??
+                      getAreasPreviewImage(drinksAreas.filter((a) => a.area === modal.area))
+                    }
                     previewClassName="aspect-square rounded-[18px]"
                     cropAspectRatio={1}
                   />
                   <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
-                    <input type="checkbox" name="isActive" defaultChecked={modalSection?.isActive ?? true} />
+                    <input
+                      type="checkbox"
+                      name="isActive"
+                      defaultChecked={modalSection?.isActive ?? true}
+                    />
                     <span className="text-sm font-semibold text-[var(--espresso)]">
-                      Seção ativa
+                      Ativa na vitrine
                     </span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDeleteConfirm({
-                        title: "Excluir seção?",
-                        message: "Confirme se deseja excluir esta seção.",
-                        action: deleteSectionAction,
-                        fields: { storeSlug, area: modal.area },
-                      })
-                    }
-                    className="btn-secondary w-full border-red-500 text-red-600"
-                  >
-                    Excluir
-                  </button>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
+                    <button
+                      type="button"
+                      onClick={() => setModal(null)}
+                      className="btn-secondary w-full"
+                    >
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary w-full">
@@ -1481,48 +808,58 @@ export function AdminProductsPanel({
                     </button>
                   </div>
                 </form>
-              ) : null}
+              )}
 
-              {modal.type === "edit-category" && modalCategoryRecord && modalPublicCategory ? (
-                <form action={updateCategoryVisualAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
+              {/* edit category */}
+              {modal.type === "edit-category" && modalCategoryRecord && modalPublicCategory && (
+                <form
+                  action={updateCategoryVisualAction}
+                  onSubmit={() => setModal(null)}
+                  className="grid gap-4"
+                >
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="type" value="subsection" />
-                  <input type="hidden" name="parentId" value={modalPublicCategory.area} />
-                  <input type="hidden" name="parentType" value="section" />
                   <input type="hidden" name="categoryId" value={modalCategoryRecord.id} />
                   <input type="hidden" name="categorySlug" value={modalPublicCategory.slug} />
-
                   <LocalizedTextFields
                     fieldBase="name"
                     labels={{ pt: "Nome PT", en: "Name EN", es: "Nombre ES" }}
                     defaultValues={{
                       pt: modalCategoryRecord.namePt ?? modalPublicCategory.namePt,
-                      en: getCategoryTranslationValue(modalCategoryRecord, "en", "name"),
-                      es: getCategoryTranslationValue(modalCategoryRecord, "es", "name"),
+                      en: catTranslation(modalCategoryRecord, "en", "name"),
+                      es: catTranslation(modalCategoryRecord, "es", "name"),
                     }}
                   />
                   <LocalizedTextFields
                     fieldBase="description"
-                    labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
+                    labels={{ pt: "Descrição PT", en: "Description EN", es: "Descripción ES" }}
                     defaultValues={{
-                      pt: modalCategoryRecord.descriptionPt ?? modalPublicCategory.descriptionPt ?? "",
-                      en: getCategoryTranslationValue(modalCategoryRecord, "en", "description"),
-                      es: getCategoryTranslationValue(modalCategoryRecord, "es", "description"),
+                      pt:
+                        modalCategoryRecord.descriptionPt ??
+                        modalPublicCategory.descriptionPt ??
+                        "",
+                      en: catTranslation(modalCategoryRecord, "en", "description"),
+                      es: catTranslation(modalCategoryRecord, "es", "description"),
                     }}
                     textarea
+                    minHeightClass="min-h-20"
                   />
                   <ImageUploadField
                     name="sidebarImageUrl"
-                    label="Imagem da lateral esquerda"
-                    defaultValue={modalCategoryRecord.sidebarImageUrl ?? modalPublicCategory.sidebarImageUrl}
-                    description="Essa imagem aparece na navegacao lateral do cardapio publico e e otimizada automaticamente."
+                    label="Imagem"
+                    defaultValue={
+                      modalCategoryRecord.sidebarImageUrl ?? modalPublicCategory.sidebarImageUrl
+                    }
                     previewClassName="aspect-square rounded-[18px]"
                     cropAspectRatio={1}
                   />
                   <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
-                    <input type="checkbox" name="isActive" defaultChecked={modalCategoryRecord.isActive} />
+                    <input
+                      type="checkbox"
+                      name="isActive"
+                      defaultChecked={modalCategoryRecord.isActive}
+                    />
                     <span className="text-sm font-semibold text-[var(--espresso)]">
-                      Seção ativa na vitrine
+                      Ativa na vitrine
                     </span>
                   </label>
                   <button
@@ -1530,7 +867,8 @@ export function AdminProductsPanel({
                     onClick={() =>
                       setDeleteConfirm({
                         title: "Excluir categoria?",
-                        message: "Confirme se deseja excluir esta categoria e seus produtos.",
+                        message:
+                          "Isso remove a categoria e todos os seus produtos permanentemente.",
                         action: deleteCategoryAction,
                         fields: {
                           storeSlug,
@@ -1541,10 +879,14 @@ export function AdminProductsPanel({
                     }
                     className="btn-secondary w-full border-red-500 text-red-600"
                   >
-                    Excluir
+                    Excluir categoria
                   </button>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full">
+                    <button
+                      type="button"
+                      onClick={() => setModal(null)}
+                      className="btn-secondary w-full"
+                    >
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary w-full">
@@ -1552,19 +894,16 @@ export function AdminProductsPanel({
                     </button>
                   </div>
                 </form>
-              ) : null}
+              )}
 
-              {modal.type === "create-product" && autoProductCategorySlug ? (
-                <form action={createProductAndRefresh} className="grid gap-4">
+              {/* create product */}
+              {modal.type === "create-product" && (
+                <form action={handleCreateProduct} className="grid gap-4">
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="type" value="product" />
-                  <input type="hidden" name="parentId" value={modal.parentId ?? autoProductCategorySlug} />
-                  <input type="hidden" name="parentType" value={modal.parentType ?? "subsection"} />
-                  <input type="hidden" name="categorySlug" value={autoProductCategorySlug} />
+                  <input type="hidden" name="categorySlug" value={modal.categorySlug} />
                   <ImageUploadField
                     name="imageUrl"
-                    label="Colocar preview da imagem aqui"
-                    description="Essa e a imagem que aparece no card do produto."
+                    label="Imagem do produto"
                     previewClassName="aspect-[5/3] rounded-[16px]"
                     cropAspectRatio={5 / 3}
                   />
@@ -1575,13 +914,14 @@ export function AdminProductsPanel({
                   />
                   <LocalizedTextFields
                     fieldBase="description"
-                    labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
+                    labels={{ pt: "Descrição PT", en: "Description EN", es: "Descripción ES" }}
                     textarea
+                    minHeightClass="min-h-20"
                   />
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                        Preco
+                        Preço
                       </span>
                       <input name="price" className="field" placeholder="14.90" />
                     </label>
@@ -1593,11 +933,11 @@ export function AdminProductsPanel({
                     </label>
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
-                        Posicao
+                        Posição
                       </span>
                       <select name="placement" className="select" defaultValue="LAST">
-                        <option value="FIRST">Primeiro da lista</option>
-                        <option value="LAST">Ultimo da lista</option>
+                        <option value="FIRST">Primeiro</option>
+                        <option value="LAST">Último</option>
                       </select>
                     </label>
                   </div>
@@ -1606,25 +946,25 @@ export function AdminProductsPanel({
                       <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
                         Destaque PT
                       </span>
-                      <input name="highlightPt" className="field" placeholder="Mais vendido, lancamento..." />
+                      <input name="highlightPt" className="field" placeholder="Mais vendido..." />
                     </label>
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
                         Highlight EN
                       </span>
-                      <input name="highlightEn" className="field" placeholder="Best seller, new..." />
+                      <input name="highlightEn" className="field" placeholder="Best seller..." />
                     </label>
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-[var(--espresso)]">
                         Destaque ES
                       </span>
-                      <input name="highlightEs" className="field" placeholder="Mas pedido, novedad..." />
+                      <input name="highlightEs" className="field" placeholder="Más pedido..." />
                     </label>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
                       <input type="checkbox" name="isAvailable" defaultChecked />
-                      <span className="text-sm font-semibold text-[var(--espresso)]">Disponivel</span>
+                      <span className="text-sm font-semibold text-[var(--espresso)]">Disponível</span>
                     </label>
                     <label className="inline-flex items-center gap-3 rounded-[18px] border border-[var(--line)] bg-white/70 px-4 py-3">
                       <input type="checkbox" name="isFeatured" />
@@ -1632,27 +972,33 @@ export function AdminProductsPanel({
                     </label>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setModal(null)}
+                      className="btn-secondary w-full"
+                    >
+                      Cancelar
+                    </button>
                     <button type="submit" className="btn-primary w-full">
                       Salvar
                     </button>
-                    <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full border-red-500 text-red-600">
-                      Cancelar
-                    </button>
                   </div>
                 </form>
-              ) : null}
+              )}
 
-              {modal.type === "edit-product" && modalProduct ? (
-                <form action={updateProductAction} onSubmit={closeModalOnSubmit} className="grid gap-4">
+              {/* edit product */}
+              {modal.type === "edit-product" && modalProduct && (
+                <form
+                  action={updateProductAction}
+                  onSubmit={() => setModal(null)}
+                  className="grid gap-4"
+                >
                   <input type="hidden" name="storeSlug" value={storeSlug} />
-                  <input type="hidden" name="type" value="product" />
-                  <input type="hidden" name="parentId" value={modalProduct.categorySlug} />
-                  <input type="hidden" name="parentType" value="subsection" />
                   <input type="hidden" name="productId" value={modalProduct.id} />
                   <input type="hidden" name="categorySlug" value={modalProduct.categorySlug} />
                   <ImageUploadField
                     name="imageUrl"
-                    label="Colocar preview da imagem aqui"
+                    label="Imagem do produto"
                     defaultValue={modalProduct.imageUrl}
                     previewClassName="aspect-[5/3] rounded-[16px]"
                     cropAspectRatio={5 / 3}
@@ -1662,17 +1008,17 @@ export function AdminProductsPanel({
                     labels={{ pt: "Nome PT", en: "Name EN", es: "Nombre ES" }}
                     defaultValues={{
                       pt: modalProduct.namePt,
-                      en: getProductTranslationValue(modalProduct, "en", "name"),
-                      es: getProductTranslationValue(modalProduct, "es", "name"),
+                      en: productTranslation(modalProduct, "en", "name"),
+                      es: productTranslation(modalProduct, "es", "name"),
                     }}
                   />
                   <LocalizedTextFields
                     fieldBase="description"
-                    labels={{ pt: "Descricao PT", en: "Description EN", es: "Descripcion ES" }}
+                    labels={{ pt: "Descrição PT", en: "Description EN", es: "Descripción ES" }}
                     defaultValues={{
                       pt: modalProduct.descriptionPt ?? "",
-                      en: getProductTranslationValue(modalProduct, "en", "description"),
-                      es: getProductTranslationValue(modalProduct, "es", "description"),
+                      en: productTranslation(modalProduct, "en", "description"),
+                      es: productTranslation(modalProduct, "es", "description"),
                     }}
                     textarea
                     minHeightClass="min-h-20"
@@ -1680,9 +1026,13 @@ export function AdminProductsPanel({
                   <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
-                        Preco
+                        Preço
                       </span>
-                      <input name="price" className="field" defaultValue={modalProduct.price ?? ""} />
+                      <input
+                        name="price"
+                        className="field"
+                        defaultValue={modalProduct.price ?? ""}
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
@@ -1698,7 +1048,11 @@ export function AdminProductsPanel({
                       <span className="mb-1.5 block text-sm font-semibold text-[var(--espresso)]">
                         Ordem
                       </span>
-                      <input name="sortOrder" className="field" defaultValue={modalProduct.sortOrder} />
+                      <input
+                        name="sortOrder"
+                        className="field"
+                        defaultValue={modalProduct.sortOrder}
+                      />
                     </label>
                   </div>
                   <div className="grid gap-3 lg:grid-cols-3">
@@ -1719,7 +1073,7 @@ export function AdminProductsPanel({
                       <input
                         name="highlightEn"
                         className="field"
-                        defaultValue={getProductTranslationValue(modalProduct, "en", "highlight")}
+                        defaultValue={productTranslation(modalProduct, "en", "highlight")}
                       />
                     </label>
                     <label className="block">
@@ -1729,18 +1083,30 @@ export function AdminProductsPanel({
                       <input
                         name="highlightEs"
                         className="field"
-                        defaultValue={getProductTranslationValue(modalProduct, "es", "highlight")}
+                        defaultValue={productTranslation(modalProduct, "es", "highlight")}
                       />
                     </label>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--line)] bg-white/70 px-3 py-2">
-                      <input type="checkbox" name="isAvailable" defaultChecked={modalProduct.isAvailable} />
-                      <span className="text-sm font-semibold text-[var(--espresso)]">Disponivel</span>
+                      <input
+                        type="checkbox"
+                        name="isAvailable"
+                        defaultChecked={modalProduct.isAvailable}
+                      />
+                      <span className="text-sm font-semibold text-[var(--espresso)]">
+                        Disponível
+                      </span>
                     </label>
                     <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--line)] bg-white/70 px-3 py-2">
-                      <input type="checkbox" name="isFeatured" defaultChecked={modalProduct.isFeatured} />
-                      <span className="text-sm font-semibold text-[var(--espresso)]">Destaque</span>
+                      <input
+                        type="checkbox"
+                        name="isFeatured"
+                        defaultChecked={modalProduct.isFeatured}
+                      />
+                      <span className="text-sm font-semibold text-[var(--espresso)]">
+                        Destaque
+                      </span>
                     </label>
                   </div>
                   <button
@@ -1748,49 +1114,93 @@ export function AdminProductsPanel({
                     onClick={() =>
                       setDeleteConfirm({
                         title: "Excluir produto?",
-                        message: "Confirme se deseja excluir este produto.",
+                        message: "Isso remove o produto permanentemente.",
                         action: deleteProductAction,
                         fields: { storeSlug, productId: modalProduct.id },
                       })
                     }
                     className="btn-secondary w-full border-red-500 text-red-600"
                   >
-                    Excluir
+                    Excluir produto
                   </button>
                   <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setModal(null)}
+                      className="btn-secondary w-full"
+                    >
+                      Cancelar
+                    </button>
                     <button type="submit" className="btn-primary w-full">
                       Salvar
                     </button>
-                    <button type="button" onClick={() => setModal(null)} className="btn-secondary w-full border-red-500 text-red-600">
-                      Cancelar
-                    </button>
                   </div>
                 </form>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
-      {deleteConfirm ? (
+      {/* ── delete confirm ── */}
+      {deleteConfirm && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[rgba(40,21,14,0.38)] p-4">
           <div className="w-full max-w-md rounded-[12px] border border-[#c6c6c6]/70 bg-white p-6">
-            <h2 className="text-2xl font-bold text-black">{deleteConfirm.title}</h2>
-            <p className="mt-3 text-sm text-[#747171]">{deleteConfirm.message}</p>
-            <form action={confirmDelete} className="mt-6 grid gap-3 sm:grid-cols-2">
+            <h2 className="text-xl font-bold text-black">{deleteConfirm.title}</h2>
+            <p className="mt-2 text-sm text-[#747171]">{deleteConfirm.message}</p>
+            <form action={handleDeleteConfirm} className="mt-6 grid gap-3 sm:grid-cols-2">
               {Object.entries(deleteConfirm.fields).map(([name, value]) => (
                 <input key={name} type="hidden" name={name} value={value} />
               ))}
-              <button type="button" onClick={() => setDeleteConfirm(null)} className="btn-secondary w-full">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="btn-secondary w-full"
+              >
                 Cancelar
               </button>
-              <button type="submit" className="btn-secondary w-full border-red-500 text-red-600">
+              <button
+                type="submit"
+                className="btn-secondary w-full border-red-500 text-red-600"
+              >
                 Confirmar exclusão
               </button>
             </form>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
+  );
+}
+
+// ── RootCard ──────────────────────────────────────────────────────────────────
+
+function RootCard({
+  label,
+  subtitle,
+  area,
+  imageUrl,
+  onClick,
+}: {
+  label: string;
+  subtitle: string;
+  area: MenuAreaSlug;
+  imageUrl: string | null | undefined;
+  onClick: () => void;
+}) {
+  return (
+    <article className="relative min-h-[120px] overflow-hidden rounded-[18px]">
+      <button
+        type="button"
+        onClick={onClick}
+        className="absolute inset-0 text-left transition hover:-translate-y-[1px]"
+      >
+        <SectionArt label={label} area={area} imageUrl={imageUrl} />
+        <span className="relative z-10 flex h-full min-h-[120px] flex-col justify-end p-4 text-white">
+          <span className="text-2xl font-normal leading-tight">{label}</span>
+          <span className="mt-1 text-xs text-white/75">{subtitle}</span>
+        </span>
+      </button>
+    </article>
   );
 }

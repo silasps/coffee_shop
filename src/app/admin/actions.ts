@@ -11,6 +11,8 @@ import {
   createCatalogCategory,
   createCatalogProduct,
   createFinanceEntry,
+  deleteFinanceEntry,
+  updateFinanceEntry,
   createInventoryMovement,
   createManagedStore,
   createSupplier,
@@ -52,6 +54,7 @@ function revalidateStorePaths(storeSlug: string) {
   revalidatePath("/admin");
   revalidatePath(`/admin/${storeSlug}`);
   revalidatePath("/financeiro");
+  revalidatePath(`/painel/${storeSlug}`, "layout");
   revalidatePath(`/loja/${storeSlug}`, "layout");
   revalidateTag(getPublicStorefrontCacheTag(storeSlug), { expire: 0 });
   revalidateTag(getPublicCatalogCacheTag(storeSlug), { expire: 0 });
@@ -362,6 +365,34 @@ export async function updateSupplierAction(formData: FormData) {
   revalidateStorePaths(storeSlug);
 }
 
+export async function deleteFinanceEntryAction(formData: FormData) {
+  const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+  const entryId = formData.get("entryId")?.toString() ?? "";
+  await deleteFinanceEntry(entryId);
+  revalidateStorePaths(storeSlug);
+}
+
+export async function updateFinanceEntryAction(formData: FormData) {
+  const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+  const happenedAtStr = formData.get("happenedAt")?.toString() ?? "";
+  const happenedAt = happenedAtStr ? new Date(happenedAtStr) : undefined;
+  await updateFinanceEntry({
+    entryId: formData.get("entryId")?.toString() ?? "",
+    direction:
+      (formData.get("direction")?.toString() as CoffeeFinanceDirection) ??
+      CoffeeFinanceDirection.EXPENSE,
+    category:
+      (formData.get("category")?.toString() as CoffeeFinanceCategory) ??
+      CoffeeFinanceCategory.OPERATIONS,
+    descriptionPt: formData.get("descriptionPt")?.toString() ?? "",
+    amount: parseOptionalNumber(formData.get("amount")) ?? 0,
+    referenceCode: formData.get("referenceCode")?.toString() ?? "",
+    notes: formData.get("notes")?.toString() ?? "",
+    happenedAt,
+  });
+  revalidateStorePaths(storeSlug);
+}
+
 export async function addInventoryMovementAction(formData: FormData) {
   const storeSlug = formData.get("storeSlug")?.toString() ?? "";
 
@@ -384,6 +415,8 @@ export async function addInventoryMovementAction(formData: FormData) {
 
 export async function createFinanceEntryAction(formData: FormData) {
   const storeSlug = formData.get("storeSlug")?.toString() ?? "";
+  const happenedAtStr = formData.get("happenedAt")?.toString() ?? "";
+  const happenedAt = happenedAtStr ? new Date(happenedAtStr) : undefined;
 
   await createFinanceEntry({
     storeSlug,
@@ -398,6 +431,7 @@ export async function createFinanceEntryAction(formData: FormData) {
     supplierId: formData.get("supplierId")?.toString() ?? "",
     referenceCode: formData.get("referenceCode")?.toString() ?? "",
     notes: formData.get("notes")?.toString() ?? "",
+    happenedAt,
   });
 
   revalidateStorePaths(storeSlug);

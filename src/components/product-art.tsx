@@ -443,14 +443,15 @@ export function SectionArt({
       <div className="absolute inset-0" style={{ background: palette.background }} />
 
       {hasPhoto ? (
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: toBackgroundImage(imageUrl as string),
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-          }}
-        />
+        <div className="absolute inset-0">
+          <Image
+            src={imageUrl as string}
+            alt=""
+            fill
+            className="object-cover object-center"
+            sizes="(max-width: 640px) 50vw, 300px"
+          />
+        </div>
       ) : (
         <FallbackPhoto motif={motif} palette={palette} />
       )}

@@ -6,11 +6,11 @@ import {
 } from "@prisma/client";
 import { AdminShell } from "@/components/admin-shell";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
+import { CashPanel } from "@/components/cash-panel";
 import { ColorField } from "@/components/color-field";
 import { ImageUploadField } from "@/components/image-upload-field";
 import {
   addInventoryMovementAction,
-  createFinanceEntryAction,
   createSupplierAction,
   updateStorefrontAction,
   updateSupplierAction,
@@ -132,10 +132,12 @@ export default async function StoreAdminPage({
     query.section === "storefront" ||
     query.section === "products" ||
     query.section === "suppliers" ||
-    query.section === "cash"
+    query.section === "cash" ||
+    query.section === "inventory"
       ? query.section
       : "overview";
 
+  const isProductsSection = activeSection === "products";
   const [store, dashboard, catalog] = await Promise.all([
     getStorefront(storeSlug),
     getOperationsDashboard(storeSlug),
@@ -161,11 +163,13 @@ export default async function StoreAdminPage({
   const foodsArea = orderedCatalog.find((entry) => entry.area === "foods") ?? null;
   const foodSidebarItems = foodsArea ? buildFoodSidebarItems(foodsArea) : [];
   const availableAreas = orderedCatalog.map((entry) => entry.area);
-  const requestedArea = availableAreas.includes(query.area as MenuAreaSlug)
+  // área explícita na URL → restaura posição; sem área → null (componente começa em root)
+  const explicitArea: MenuAreaSlug | null = availableAreas.includes(query.area as MenuAreaSlug)
     ? (query.area as MenuAreaSlug)
     : query.category && foodsArea?.categories.some((category) => category.slug === query.category)
       ? "foods"
-      : orderedCatalog[0]?.area ?? "hot-drinks";
+      : null;
+  const requestedArea = explicitArea ?? orderedCatalog[0]?.area ?? "hot-drinks";
   const selectedFoodCategorySlug =
     requestedArea === "foods"
       ? foodSidebarItems.find((item) => item.slug === query.category)?.slug ??
@@ -177,9 +181,11 @@ export default async function StoreAdminPage({
       ? foodsArea?.categories.filter((category) => category.slug === selectedFoodCategorySlug) ?? []
       : orderedCatalog.find((entry) => entry.area === requestedArea)?.categories ?? [];
   const currentProductHrefExtras: Record<string, string> =
-    requestedArea === "foods" && selectedFoodCategorySlug
+    explicitArea === "foods" && selectedFoodCategorySlug
       ? { area: "foods", category: selectedFoodCategorySlug }
-      : { area: requestedArea };
+      : explicitArea
+        ? { area: explicitArea }
+        : {};
   const activeCatalogLabel =
     areaLabels[requestedArea];
   const activeCatalogProductCount = displayCategories.reduce(
@@ -222,21 +228,19 @@ export default async function StoreAdminPage({
         {
           key: "cash",
           label: "Caixa",
-          description: "Entradas, saídas e estoque.",
+          description: "Pedidos, entradas e saídas.",
           count: dashboard.financeEntries.length,
           href: buildSectionHref(store.slug, "cash"),
         },
+        {
+          key: "inventory",
+          label: "Estoque",
+          description: "Movimentos de insumos.",
+          count: dashboard.inventoryMovements.length,
+          href: buildSectionHref(store.slug, "inventory"),
+        },
       ]}
-      stats={
-        activeSection === "products"
-          ? []
-          : [
-              { label: "Produtos", value: dashboard.products.length },
-              { label: "Categorias", value: dashboard.categories.length },
-              { label: "Fornecedores", value: dashboard.suppliers.length },
-              { label: "Saldo", value: formatMoney(balance, "pt") },
-            ]
-      }
+      stats={[]}
       actions={
         <>
           <Link href="/admin" className="btn-secondary text-center">
@@ -526,7 +530,7 @@ export default async function StoreAdminPage({
                   categories={dashboard.categories}
                   sections={dashboard.sections}
                   products={dashboard.products}
-                  initialArea={requestedArea}
+                  initialArea={explicitArea}
           initialFoodCategorySlug={selectedFoodCategorySlug}
         />
       ) : null}
@@ -647,182 +651,96 @@ export default async function StoreAdminPage({
       ) : null}
 
       {activeSection === "cash" ? (
-        <div className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">Entradas</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{formatMoney(sales, "pt")}</p>
-            </article>
-            <article className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">Saídas</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{formatMoney(expenses, "pt")}</p>
-            </article>
-            <article className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">Saldo</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{formatMoney(balance, "pt")}</p>
-            </article>
-            <article className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">Lançamentos</p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--espresso)]">{dashboard.financeEntries.length}</p>
-            </article>
-          </div>
+        <CashPanel
+          storeSlug={store.slug}
+          financeEntries={dashboard.financeEntries}
+          orders={dashboard.orders}
+          suppliers={dashboard.suppliers}
+          financeCategoryLabels={financeCategoryLabels}
+          defaultCategory={CoffeeFinanceCategory.OPERATIONS}
+        />
+      ) : null}
 
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="grid gap-5">
-              <form action={addInventoryMovementAction} className="card-panel p-5">
-                <input type="hidden" name="storeSlug" value={store.slug} />
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-                  Movimento de estoque
-                </p>
-                <div className="mt-4 grid gap-4">
-                  <input name="titlePt" className="field" placeholder="Compra de leite" required />
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <select
-                      name="type"
-                      className="select"
-                      defaultValue={CoffeeInventoryMovementType.PURCHASE}
-                    >
-                      {Object.entries(inventoryTypeLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    <select name="supplierId" className="select">
-                      <option value="">Sem fornecedor</option>
-                      {dashboard.suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <input name="quantity" className="field" placeholder="24" />
-                    <input name="unitLabel" className="field" placeholder="litros" />
-                    <input name="referenceCode" className="field" placeholder="NF-2031" />
-                  </div>
-                  <input name="totalAmount" className="field" placeholder="198.00" />
-                  <textarea name="description" className="textarea min-h-24" placeholder="Observações" />
-                  <button type="submit" className="btn-secondary w-full">
-                    Registrar estoque
-                  </button>
-                </div>
-              </form>
-
-              <form action={createFinanceEntryAction} className="card-panel p-5">
-                <input type="hidden" name="storeSlug" value={store.slug} />
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-                  Lançamento de caixa
-                </p>
-                <div className="mt-4 grid gap-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <select name="direction" className="select">
-                      <option value="INCOME">Entrada</option>
-                      <option value="EXPENSE">Saída</option>
-                    </select>
-                    <select name="category" className="select" defaultValue={CoffeeFinanceCategory.OPERATIONS}>
-                      {Object.entries(financeCategoryLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <input name="descriptionPt" className="field" placeholder="Pagamento de aluguel" required />
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <select name="supplierId" className="select md:col-span-2">
-                      <option value="">Sem fornecedor</option>
-                      {dashboard.suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input name="amount" className="field" placeholder="850.00" required />
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <input name="referenceCode" className="field" placeholder="ALUG-ABR-01" />
-                    <input name="notes" className="field" placeholder="Detalhe opcional" />
-                  </div>
-                  <button type="submit" className="btn-primary w-full">
-                    Registrar caixa
-                  </button>
-                </div>
-              </form>
+      {activeSection === "inventory" ? (
+        <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+          <form action={addInventoryMovementAction} className="card-panel p-5">
+            <input type="hidden" name="storeSlug" value={store.slug} />
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
+              Movimento de estoque
+            </p>
+            <div className="mt-4 grid gap-4">
+              <input name="titlePt" className="field" placeholder="Compra de leite" required />
+              <div className="grid gap-4 md:grid-cols-2">
+                <select
+                  name="type"
+                  className="select"
+                  defaultValue={CoffeeInventoryMovementType.PURCHASE}
+                >
+                  {Object.entries(inventoryTypeLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select name="supplierId" className="select">
+                  <option value="">Sem fornecedor</option>
+                  {dashboard.suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <input name="quantity" className="field" placeholder="24" />
+                <input name="unitLabel" className="field" placeholder="litros" />
+                <input name="referenceCode" className="field" placeholder="NF-2031" />
+              </div>
+              <input name="totalAmount" className="field" placeholder="198.00" />
+              <textarea name="description" className="textarea min-h-24" placeholder="Observações" />
+              <button type="submit" className="btn-secondary w-full">
+                Registrar estoque
+              </button>
             </div>
+          </form>
 
-            <div className="grid gap-5">
-              <section className="card-panel p-5">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-                  Últimos lançamentos
-                </p>
-                <div className="mt-4 grid gap-3">
-                  {dashboard.financeEntries.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[var(--line)] bg-white/76 px-5 py-8 text-sm leading-7 text-[var(--muted)]">
-                      Nenhum lançamento financeiro cadastrado ainda.
-                    </div>
-                  ) : (
-                    dashboard.financeEntries.map((entry) => (
-                      <article
-                        key={entry.id}
-                        className="rounded-[18px] border border-[var(--line)] bg-white/82 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--espresso)]">
-                              {entry.descriptionPt}
-                            </p>
-                            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                              {financeCategoryLabels[entry.category as CoffeeFinanceCategory] ?? entry.category}
-                              {entry.supplierName ? ` • ${entry.supplierName}` : ""}
-                            </p>
-                          </div>
-                          <span className="text-sm font-semibold text-[var(--espresso)]">
-                            {formatMoney(entry.amount, "pt")}
-                          </span>
-                        </div>
-                      </article>
-                    ))
-                  )}
+          <section className="card-panel p-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
+              Movimentos recentes
+            </p>
+            <div className="mt-4 grid gap-3">
+              {dashboard.inventoryMovements.length === 0 ? (
+                <div className="rounded-[18px] border border-dashed border-[var(--line)] bg-white/76 px-5 py-8 text-sm leading-7 text-[var(--muted)]">
+                  Nenhum movimento de estoque registrado ainda.
                 </div>
-              </section>
-
-              <section className="card-panel p-5">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--brand-strong)]">
-                  Estoque recente
-                </p>
-                <div className="mt-4 grid gap-3">
-                  {dashboard.inventoryMovements.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[var(--line)] bg-white/76 px-5 py-8 text-sm leading-7 text-[var(--muted)]">
-                      Nenhum movimento de estoque cadastrado ainda.
+              ) : (
+                dashboard.inventoryMovements.map((movement) => (
+                  <article
+                    key={movement.id}
+                    className="rounded-[18px] border border-[var(--line)] bg-white/82 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--espresso)]">
+                          {movement.titlePt}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                          {inventoryTypeLabels[movement.type as CoffeeInventoryMovementType] ??
+                            movement.type}
+                          {movement.quantity
+                            ? ` • ${movement.quantity} ${movement.unitLabel ?? ""}`
+                            : ""}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-[var(--espresso)]">
+                        {formatMoney(movement.totalAmount ?? 0, "pt")}
+                      </span>
                     </div>
-                  ) : (
-                    dashboard.inventoryMovements.map((movement) => (
-                      <article
-                        key={movement.id}
-                        className="rounded-[18px] border border-[var(--line)] bg-white/82 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--espresso)]">
-                              {movement.titlePt}
-                            </p>
-                            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                              {movement.type} • {movement.quantity ?? "-"} {movement.unitLabel ?? ""}
-                            </p>
-                          </div>
-                          <span className="text-sm font-semibold text-[var(--espresso)]">
-                            {formatMoney(movement.totalAmount ?? 0, "pt")}
-                          </span>
-                        </div>
-                      </article>
-                    ))
-                  )}
-                </div>
-              </section>
+                  </article>
+                ))
+              )}
             </div>
-          </div>
+          </section>
         </div>
       ) : null}
     </AdminShell>
